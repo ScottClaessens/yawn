@@ -1,0 +1,168 @@
+---
+title: "Yawning - Data analysis"
+author: Scott Claessens and Patrick Neilands
+date: "`r format(Sys.Date())`"
+output:
+  html_document:
+    df_print: paged
+    toc: true
+    number_sections: false
+    toc_float: true
+---
+
+# 0. Setup
+
+Load packages.
+
+```{r warning=F, message=F}
+library(tidyverse)
+library(brms)
+library(tidybayes)
+library(bayesplot)
+library(brmstools)
+```
+
+Load the data.
+
+```{r}
+d <- read.csv('yawn.csv') %>%
+  as_tibble()
+```
+
+Visualise the outcome.
+
+```{r message=F, warning=F}
+d %>%
+  
+  ggplot(aes(x = numberYawns)) +
+  geom_histogram(binwidth = 0.5) +
+  labs(x = 'Number of yawns')
+```
+
+And split by study.
+
+```{r message=F, warning=F}
+d %>%
+  
+  ggplot(aes(x = numberYawns)) +
+  geom_histogram(binwidth = 0.5) +
+  labs(x = 'Number of yawns') +
+  facet_wrap(.~study)
+```
+
+These look pretty zero-inflated to me! A zero-inflated Poisson model follows the general form
+
+$$
+\begin{eqnarray}
+y_i & \sim & \text{ZIPoisson} (p_i, \lambda_i)\\
+\text{logit} (p_i) & = & \alpha_p  + \beta_p x_i \\
+\text{log} (\lambda_i) & = & \alpha_\lambda + \text{log(offset)} + \beta_\lambda x_i
+\end{eqnarray}
+$$
+
+where $p_i$ is the zero-inflation probability (so $1 - p_i$ is the probability of the process getting started). $\text{log(offset)}$ is the log of the exposure length, and simple algebra means that $\lambda_i$ is now the expected *rate* per exposure length, rather than the count.
+
+# 1. Intercept-only model
+
+We utlise a Bayesian multilevel modelling approach here, including random effects for individual dogs nested within studies. Throughout, we use the same linear model to predict $\lambda_i$ (the rate of yawning) and $p_i$ (the probability of the yawning process never even getting started). The latter is called `zi` inside the model formula. 
+
+To begin, we fit an intercept-only model.
+
+```{r eval=F}
+b1 <- brm(data = d, family = zero_inflated_poisson,
+          bf(numberYawns ~ 1 + offset(log(secs)) + (1 | study/ID),
+             zi ~ 1 + (1 | study/ID)),
+          iter = 2000, warmup = 1000, chains = 4, cores = 4,
+          control = list(adapt_delta = 0.99))
+
+b1 <- add_waic(b1)
+b1 <- add_loo(b1)
+
+save(b1, file = 'models/b1.rda')
+```
+
+```{r echo=F}
+load('models/b1.rda')
+```
+
+What priors did we use?
+
+```{r}
+prior_summary(b1)
+```
+
+Did the model run well? We should look at diagnostics like Rhat and Neff.
+
+```{r}
+print(b1)
+```
+
+Diagnostics look good.
+
+Let's interpret each parameter in turn. The zero-inflation parameter `zi` is -0.66. This is on the logit scale, so we need to calculate the inverse logit.
+
+```{r}
+post <- posterior_samples(b1)
+
+1 - inv_logit_scaled(post$b_zi_Intercept) %>% # prob of yawning process getting started
+  median() %>%
+  round(2)
+```
+
+The median probability of the yawning process getting started is 0.65.
+
+Let's calculate the average yawning rate once the yawning process gets started.
+
+```{r}
+(exp(post$b_Intercept) * 60) %>% # yawns per minute
+  median() %>%
+  round(2)
+```
+
+The dogs yawn 0.16 times a minute, on average. Let's split this by study.
+
+```{r}
+brmstools::forest(b1, pars = 'Intercept', grouping = 'study')
+```
+
+Average yawning rate is lowest in BT et al, but highest in SIL et al (remember that the Intercept is on the exp scale).
+
+# 2. Condition model
+
+Next, we add condition to the model, also as a random effect grouped by individual dogs nested within studies.
+
+```{r eval=F}
+b2 <- brm(data = d, family = zero_inflated_poisson,
+          bf(numberYawns ~ 0 + condition + offset(log(secs)) + (0 + condition | study/ID),
+             zi ~ 0 + condition + (0 + condition | study/ID)),
+          # set priors for both conditions and both linear models
+          prior = c(prior(student_t(3, -2, 10), class = b, coef = conditionControl),
+                    prior(student_t(3, -2, 10), class = b, coef = conditionYawning),
+                    prior(logistic(0, 1), class = b, coef = conditionControl, dpar = zi),
+                    prior(logistic(0, 1), class = b, coef = conditionYawning, dpar = zi)),
+          iter = 2000, warmup = 1000, chains = 4, cores = 4,
+          control = list(adapt_delta = 0.99))
+
+b2 <- add_waic(b2)
+b2 <- add_loo(b2)
+
+save(b2, file = 'models/b2.rda')
+```
+
+```{r echo=F}
+load('models/b2.rda')
+```
+
+What priors did we use?
+
+```{r}
+prior_summary(b2)
+```
+
+Did the model run well? We should look at diagnostics like Rhat and Neff.
+
+```{r}
+print(b2)
+```
+
+Diagnostics look good.
