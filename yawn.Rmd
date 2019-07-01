@@ -1,5 +1,5 @@
 ---
-title: "Yawning - Data analysis"
+title: "Contagious Yawning in Dogs: A Re-analysis"
 author: Scott Claessens and Patrick Neilands
 date: "`r format(Sys.Date())`"
 output:
@@ -9,6 +9,18 @@ output:
     number_sections: false
     toc_float: true
 ---
+
+The purpose of this document is to re-analyse the data from seven studies of contagious yawning in dogs. These studies are:
+
+- [Joly-Mascheroni et al. (2008)](https://royalsocietypublishing.org/doi/abs/10.1098/rsbl.2008.0333)
+- [Harr et al. (2009)](https://link.springer.com/article/10.1007/s10071-009-0233-0)
+- [O’Hara & Reeve (2011)](https://www.sciencedirect.com/science/article/pii/S0003347210004483)
+- [Silva et al. (2012)](https://link.springer.com/article/10.1007/s10071-012-0473-2)
+- [Madsen & Persson (2013)](https://link.springer.com/article/10.1007/s10071-012-0568-9)
+- [Romero et al. (2013)](https://journals.plos.org/plosone/article?id=10.1371/journal.pone.0071365)
+- [Buttner & Strasser (2014)](https://link.springer.com/article/10.1007/s10071-013-0641-z)
+
+We would like to thank the authors of these studies for kindly sharing their original data with us.
 
 # 0. Setup
 
@@ -25,15 +37,17 @@ library(brmstools)
 Load the data.
 
 ```{r}
-d <- read.csv('yawn.csv') %>%
+d <- 
+  read.csv('data/yawn.csv') %>%
   as_tibble()
+
+d
 ```
 
 Visualise the outcome.
 
 ```{r message=F, warning=F}
 d %>%
-  
   ggplot(aes(x = numberYawns)) +
   geom_histogram(binwidth = 0.5) +
   labs(x = 'Number of yawns')
@@ -43,7 +57,6 @@ And split by study.
 
 ```{r message=F, warning=F}
 d %>%
-  
   ggplot(aes(x = numberYawns)) +
   geom_histogram(binwidth = 0.5) +
   labs(x = 'Number of yawns') +
@@ -69,32 +82,32 @@ We utlise a Bayesian multilevel modelling approach here, including random effect
 To begin, we fit an intercept-only model.
 
 ```{r eval=F}
-b1 <- brm(data = d, family = zero_inflated_poisson,
+m1 <- brm(data = d, family = zero_inflated_poisson,
           bf(numberYawns ~ 1 + offset(log(secs)) + (1 | study/ID),
              zi ~ 1 + (1 | study/ID)),
           iter = 2000, warmup = 1000, chains = 4, cores = 4,
           control = list(adapt_delta = 0.99))
 
-b1 <- add_waic(b1)
-b1 <- add_loo(b1)
+m1 <- add_waic(m1)
+m1 <- add_loo(m1)
 
-save(b1, file = 'models/b1.rda')
+save(m1, file = 'models/m1.rda')
 ```
 
 ```{r echo=F}
-load('models/b1.rda')
+load('models/m1.rda')
 ```
 
-What priors did we use?
+We used default priors.
 
 ```{r}
-prior_summary(b1)
+prior_summary(m1)
 ```
 
 Did the model run well? We should look at diagnostics like Rhat and Neff.
 
 ```{r}
-print(b1)
+print(m1)
 ```
 
 Diagnostics look good.
@@ -102,7 +115,7 @@ Diagnostics look good.
 Let's interpret each parameter in turn. The zero-inflation parameter `zi` is -0.66. This is on the logit scale, so we need to calculate the inverse logit.
 
 ```{r}
-post <- posterior_samples(b1)
+post <- posterior_samples(m1)
 
 1 - inv_logit_scaled(post$b_zi_Intercept) %>% # prob of yawning process getting started
   median() %>%
@@ -122,17 +135,18 @@ Let's calculate the average yawning rate once the yawning process gets started.
 The dogs yawn 0.16 times a minute, on average. Let's split this by study.
 
 ```{r}
-brmstools::forest(b1, pars = 'Intercept', grouping = 'study')
+brmstools::forest(m1, pars = 'Intercept', grouping = 'study') %>%
+  scale_x_continuous(trans='log')
 ```
 
-Average yawning rate is lowest in BT et al, but highest in SIL et al (remember that the Intercept is on the exp scale).
+Average yawning rate is lowest in BT et al, but highest in SIL et al.
 
 # 2. Condition model
 
 Next, we add condition to the model, also as a random effect grouped by individual dogs nested within studies.
 
 ```{r eval=F}
-b2 <- brm(data = d, family = zero_inflated_poisson,
+m2 <- brm(data = d, family = zero_inflated_poisson,
           bf(numberYawns ~ 0 + condition + offset(log(secs)) + (0 + condition | study/ID),
              zi ~ 0 + condition + (0 + condition | study/ID)),
           # set priors for both conditions and both linear models
@@ -143,26 +157,26 @@ b2 <- brm(data = d, family = zero_inflated_poisson,
           iter = 2000, warmup = 1000, chains = 4, cores = 4,
           control = list(adapt_delta = 0.99))
 
-b2 <- add_waic(b2)
-b2 <- add_loo(b2)
+m2 <- add_waic(m2)
+m2 <- add_loo(m2)
 
-save(b2, file = 'models/b2.rda')
+save(m2, file = 'models/m2.rda')
 ```
 
 ```{r echo=F}
-load('models/b2.rda')
+load('models/m2.rda')
 ```
 
 What priors did we use?
 
 ```{r}
-prior_summary(b2)
+prior_summary(m2)
 ```
 
 Did the model run well? We should look at diagnostics like Rhat and Neff.
 
 ```{r}
-print(b2)
+print(m2)
 ```
 
 Diagnostics look good.
