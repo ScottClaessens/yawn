@@ -39,7 +39,9 @@ Load the data.
 ```{r}
 d <- 
   read.csv('data/yawn.csv') %>%
-  as_tibble()
+  as_tibble() %>%
+  # create new column for modelling interaction effect
+  mutate(int = paste(condition, familiar, sep=""))
 
 d
 ```
@@ -75,7 +77,9 @@ $$
 
 where $p_i$ is the zero-inflation probability (so $1 - p_i$ is the probability of the process getting started). $\text{log(offset)}$ is the log of the exposure length, and simple algebra means that $\lambda_i$ is now the expected *rate* per exposure length, rather than the count.
 
-# 1. Intercept-only model
+# 1. Fit models
+
+## 1.1. Intercept-only model
 
 We utlise a Bayesian multilevel modelling approach here, including random effects for individual dogs nested within studies. Throughout, we use the same linear model to predict $\lambda_i$ (the rate of yawning) and $p_i$ (the probability of the yawning process never even getting started). The latter is called `zi` inside the model formula. 
 
@@ -112,7 +116,7 @@ print(m1)
 
 Diagnostics look good.
 
-Let's interpret each parameter in turn. The zero-inflation parameter `zi` is -0.66. This is on the logit scale, so we need to calculate the inverse logit.
+Let's interpret each parameter in turn. The zero-inflation parameter `zi` is xxxxx. This is on the logit scale, so we need to calculate the inverse logit.
 
 ```{r}
 post <- posterior_samples(m1)
@@ -122,7 +126,7 @@ post <- posterior_samples(m1)
   round(2)
 ```
 
-The median probability of the yawning process getting started is 0.65.
+The median probability of the yawning process getting started is xxxxxx.
 
 Let's calculate the average yawning rate once the yawning process gets started.
 
@@ -132,7 +136,7 @@ Let's calculate the average yawning rate once the yawning process gets started.
   round(2)
 ```
 
-The dogs yawn 0.16 times a minute, on average. Let's split this by study.
+The dogs yawn xxxxx times a minute, on average. Let's split this by study.
 
 ```{r}
 brmstools::forest(m1, pars = 'Intercept', grouping = 'study') %>%
@@ -141,7 +145,7 @@ brmstools::forest(m1, pars = 'Intercept', grouping = 'study') %>%
 
 Average yawning rate is lowest in BT et al, but highest in SIL et al.
 
-# 2. Condition model
+## 1.2. Condition-only model
 
 Next, we add condition to the model, also as a random effect grouped by individual dogs nested within studies.
 
@@ -180,3 +184,101 @@ print(m2)
 ```
 
 Diagnostics look good.
+
+## 1.3. Familiarity-only model
+
+We replace condition with familiarity in the model, again as a random effect grouped by individual dogs nested within studies.
+
+```{r eval=F}
+m3 <- brm(data = d, family = zero_inflated_poisson,
+          bf(numberYawns ~ 0 + familiar + offset(log(secs)) + (0 + familiar | study/ID),
+             zi ~ 0 + familiar + (0 + familiar | study/ID)),
+          # set priors for both conditions and both linear models
+          prior = c(prior(student_t(3, -2, 10), class = b, coef = familiarFamiliar),
+                    prior(student_t(3, -2, 10), class = b, coef = familiarUnfamiliar),
+                    prior(logistic(0, 1), class = b, coef = familiarFamiliar, dpar = zi),
+                    prior(logistic(0, 1), class = b, coef = familiarUnfamiliar, dpar = zi)),
+          iter = 2000, warmup = 1000, chains = 4, cores = 4,
+          control = list(adapt_delta = 0.99))
+
+m3 <- add_waic(m3)
+m3 <- add_loo(m3)
+
+save(m3, file = 'models/m3.rda')
+```
+
+```{r echo=F}
+load('models/m3.rda')
+```
+
+What priors did we use?
+
+```{r}
+prior_summary(m3)
+```
+
+Did the model run well? We should look at diagnostics like Rhat and Neff.
+
+```{r}
+print(m3)
+```
+
+Diagnostics look good.
+
+## 1.4. Interaction model
+
+Finally, we model the interaction between condition and familiarity. We use an indexing approach to interactions, whereby we simply give each "cell" in the 2x2 design its own intercept, and allow these intercepts to vary by study and ID.
+
+```{r eval=F}
+m4 <- brm(data = d, family = zero_inflated_poisson,
+          bf(numberYawns ~ 0 + int + offset(log(secs)) + (0 + int | study/ID),
+             zi ~ 0 + int + (0 + int | study/ID)),
+          # set priors for both conditions and both linear models
+          prior = c(prior(student_t(3, -2, 10), class = b, coef = intControlFamiliar),
+                    prior(student_t(3, -2, 10), class = b, coef = intControlUnfamiliar),
+                    prior(student_t(3, -2, 10), class = b, coef = intYawningFamiliar),
+                    prior(student_t(3, -2, 10), class = b, coef = intYawningUnfamiliar),
+                    prior(logistic(0, 1), class = b, coef = intControlFamiliar, dpar = zi),
+                    prior(logistic(0, 1), class = b, coef = intControlUnfamiliar, dpar = zi),
+                    prior(logistic(0, 1), class = b, coef = intYawningFamiliar, dpar = zi),
+                    prior(logistic(0, 1), class = b, coef = intYawningUnfamiliar, dpar = zi)),
+          iter = 2000, warmup = 1000, chains = 4, cores = 4,
+          control = list(adapt_delta = 0.99))
+
+m4 <- add_waic(m4)
+m4 <- add_loo(m4)
+
+save(m4, file = 'models/m4.rda')
+```
+
+```{r echo=F}
+load('models/m4.rda')
+```
+
+What priors did we use?
+
+```{r}
+prior_summary(m4)
+```
+
+Did the model run well? We should look at diagnostics like Rhat and Neff.
+
+```{r}
+print(m4)
+```
+
+Diagnostics look good.
+
+# 2. Compare models
+
+WAIC.
+
+```{r}
+compare_ic(m1, m2, m3, m4, ic = "waic")
+```
+
+LOO.
+
+```{r}
+compare_ic(m1, m2, m3, m4, ic = "loo")
+```
