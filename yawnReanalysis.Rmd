@@ -1,0 +1,277 @@
+---
+title: "Contagious Yawning in Dogs: Re-analysis"
+author: Scott Claessens and Patrick Neilands
+date: "`r format(Sys.Date())`"
+output:
+  html_document:
+    df_print: paged
+    toc: true
+    number_sections: false
+    toc_float: true
+---
+
+The purpose of this document is to re-analyse the data from seven studies of contagious yawning in dogs. These studies are:
+
+- [Joly-Mascheroni et al. (2008)](https://royalsocietypublishing.org/doi/abs/10.1098/rsbl.2008.0333)
+- [Harr et al. (2009)](https://link.springer.com/article/10.1007/s10071-009-0233-0)
+- [O’Hara & Reeve (2011)](https://www.sciencedirect.com/science/article/pii/S0003347210004483)
+- [Silva et al. (2012)](https://link.springer.com/article/10.1007/s10071-012-0473-2)
+- [Madsen & Persson (2013)](https://link.springer.com/article/10.1007/s10071-012-0568-9)
+- [Romero et al. (2013)](https://journals.plos.org/plosone/article?id=10.1371/journal.pone.0071365)
+- [Buttner & Strasser (2014)](https://link.springer.com/article/10.1007/s10071-013-0641-z)
+
+We would like to thank the authors of these studies for kindly sharing their original data with us.
+
+# 0. Setup
+
+```{r echo=FALSE, cache=FALSE, include=FALSE}
+options(width = 120)
+
+library(tidyverse)
+library(brms)
+library(tidybayes)
+library(bayesplot)
+library(brmstools)
+```
+
+Load the data.
+
+```{r}
+d <- 
+  read.csv('data/yawnReanalysis.csv') %>%
+  as_tibble() %>%
+  # create dummy variables for re-analysis
+  mutate(condition = ifelse(condition == "Control", 0, 1),
+         familiar  = ifelse(familiar  == "Unfamiliar", 0, 1))
+
+d
+```
+
+Visualise the outcome.
+
+```{r message=F, warning=F}
+d %>%
+  ggplot(aes(x = numberYawns)) +
+  geom_histogram(binwidth = 0.5) +
+  labs(x = 'Number of yawns')
+```
+
+And split by study.
+
+```{r message=F, warning=F}
+d %>%
+  ggplot(aes(x = numberYawns)) +
+  geom_histogram(binwidth = 0.5) +
+  labs(x = 'Number of yawns') +
+  facet_wrap(.~study)
+```
+
+These look zero-inflated. A zero-inflated Poisson model follows the general form
+
+$$
+\begin{eqnarray}
+y_i & \sim & \text{ZIPoisson} (p_i, \lambda_i)\\
+\text{logit} (p_i) & = & \alpha_p  + \beta_p x_i \\
+\text{log} (\lambda_i) & = & \alpha_\lambda + \text{log(offset)} + \beta_\lambda x_i
+\end{eqnarray}
+$$
+
+where $p_i$ is the zero-inflation probability (so $1 - p_i$ is the probability of the process getting started). $\text{log(offset)}$ is the log of the exposure length, and simple algebra means that $\lambda_i$ is now the expected *rate* per exposure length, rather than the count.
+
+To make sure that assuming zero-inflation is not affecting our results, we will also run these models with a Poisson distribution without zero-inflation.
+
+# 1. Fit zero-inflated Poisson models
+
+## 1.1. Intercept-only model
+
+We utlise a Bayesian multilevel modelling approach here, including random effects for individual dogs nested within studies. Throughout, we use the same linear model to predict $\lambda_i$ (the rate of yawning) and $p_i$ (the probability of the yawning process never even getting started). The latter is called `zi` inside the model formula. 
+
+To begin, we fit an intercept-only model.
+
+```{r eval=F}
+m1.1 <- brm(data = d, family = zero_inflated_poisson,
+          bf(numberYawns ~ 1 + offset(log(secs)) + (1 | study/ID),
+             zi ~ 1 + (1 | study/ID)),
+          iter = 2000, warmup = 1000, chains = 4, cores = 4,
+          control = list(adapt_delta = 0.99))
+
+m1.1 <- add_ic(m1.1, ic = c("loo","waic"))
+
+save(m1.1, file = 'models/m1.1.rda')
+```
+
+```{r echo=F}
+load('models/m1.1.rda')
+```
+
+```{r}
+print(m1.1)
+```
+
+Let's interpret each parameter in turn. The zero-inflation parameter `zi` is xxxxx. This is on the logit scale, so we need to calculate the inverse logit.
+
+```{r}
+post <- posterior_samples(m1.1)
+
+1 - inv_logit_scaled(post$b_zi_Intercept) %>% # prob of yawning process getting started
+  median() %>%
+  round(2)
+```
+
+The median probability of the yawning process getting started is xxxxxx.
+
+Let's calculate the average yawning rate once the yawning process gets started.
+
+```{r}
+(exp(post$b_Intercept) * 60) %>% # yawns per minute
+  median() %>%
+  round(2)
+```
+
+The dogs yawn xxxxx times a minute, on average. Let's split this by study.
+
+```{r}
+brmstools::forest(m1, pars = 'Intercept', grouping = 'study')
+```
+
+Average yawning rate is lowest in BT et al, but highest in SIL et al.
+
+## 1.2. Condition-only model
+
+Next, we add condition to the model, also as a random effect grouped by individual dogs nested within studies.
+
+```{r eval=F}
+m1.2 <- brm(data = d, family = zero_inflated_poisson,
+          bf(numberYawns ~ 0 + intercept + condition + offset(log(secs)) + 
+               (0 + intercept + condition | study/ID),
+             zi ~ 0 + intercept + condition + 
+               (0 + intercept + condition | study/ID)),
+          prior = c(prior(student_t(3, -2, 10), class = b, coef = "intercept"),
+                    prior(normal(0, 1), class = b, coef = "condition"),
+                    prior(logistic(0, 1), class = b, coef = "intercept", dpar = zi),
+                    prior(normal(0, 1), class = b, coef = "condition", dpar = zi)),
+          iter = 2000, warmup = 1000, chains = 4, cores = 4,
+          control = list(adapt_delta = 0.99))
+
+m1.2 <- add_ic(m1.2, ic = c("loo","waic"))
+
+save(m1.2, file = 'models/m1.2.rda')
+```
+
+```{r echo=F}
+load('models/m1.2.rda')
+```
+
+```{r}
+print(m1.2)
+```
+
+## 1.3. Familiarity-only model
+
+We replace condition with familiarity in the model, again as a random effect grouped by individual dogs nested within studies.
+
+```{r eval=F}
+m1.3 <- brm(data = d, family = zero_inflated_poisson,
+          bf(numberYawns ~ 0 + intercept + familiar + offset(log(secs)) + 
+               (0 + intercept + familiar | study/ID),
+             zi ~ 0 + intercept + familiar + 
+               (0 + intercept + familiar | study/ID)),
+          prior = c(prior(student_t(3, -2, 10), class = b, coef = "intercept"),
+                    prior(normal(0, 1), class = b, coef = "familiar"),
+                    prior(logistic(0, 1), class = b, coef = "intercept", dpar = zi),
+                    prior(normal(0, 1), class = b, coef = "familiar", dpar = zi)),
+          iter = 2000, warmup = 1000, chains = 4, cores = 4,
+          control = list(adapt_delta = 0.99))
+
+m1.3 <- add_ic(m1.3, ic = c("loo","waic"))
+
+save(m1.3, file = 'models/m1.3.rda')
+```
+
+```{r echo=F}
+load('models/m1.3.rda')
+```
+
+```{r}
+print(m1.3)
+```
+
+## 1.4. Condition + Familiarity model
+
+We include both condition and familiarity as additive effects.
+
+```{r eval=F}
+m1.4 <- brm(data = d, family = zero_inflated_poisson,
+          bf(numberYawns ~ 0 + intercept + condition + familiar + offset(log(secs)) + 
+               (0 + intercept + condition + familiar | study/ID),
+             zi ~ 0 + intercept + condition + familiar + 
+               (0 + intercept + condition + familiar | study/ID)),
+          prior = c(prior(student_t(3, -2, 10), class = b, coef = "intercept"),
+                    prior(normal(0, 1), class = b, coef = "condition"),
+                    prior(normal(0, 1), class = b, coef = "familiar"),
+                    prior(logistic(0, 1), class = b, coef = "intercept", dpar = zi),
+                    prior(normal(0, 1), class = b, coef = "condition", dpar = zi),
+                    prior(normal(0, 1), class = b, coef = "familiar", dpar = zi)),
+          iter = 2000, warmup = 1000, chains = 4, cores = 4,
+          control = list(adapt_delta = 0.99))
+
+m1.4 <- add_ic(m1.4, ic = c("loo","waic"))
+
+save(m1.4, file = 'models/m1.4.rda')
+```
+
+```{r echo=F}
+load('models/m1.4.rda')
+```
+
+```{r}
+print(m1.4)
+```
+
+## 1.5. Interaction model
+
+Finally, we allow condition and familiarity to interaction with one another.
+
+```{r eval=F}
+m1.5 <- brm(data = d, family = zero_inflated_poisson,
+          bf(numberYawns ~ 0 + intercept + condition*familiar + offset(log(secs)) + 
+               (0 + intercept + condition*familiar | study/ID),
+             zi ~ 0 + intercept + condition*familiar + 
+               (0 + intercept + condition*familiar | study/ID)),
+          prior = c(prior(student_t(3, -2, 10), class = b, coef = "intercept"),
+                    prior(normal(0, 1), class = b, coef = "condition"),
+                    prior(normal(0, 1), class = b, coef = "familiar"),
+                    prior(normal(0, 1), class = b, coef = "condition:familiar"),
+                    prior(logistic(0, 1), class = b, coef = "intercept", dpar = zi),
+                    prior(normal(0, 1), class = b, coef = "condition", dpar = zi),
+                    prior(normal(0, 1), class = b, coef = "familiar", dpar = zi),
+                    prior(normal(0, 1), class = b, coef = "condition:familiar", dpar = zi)),
+          iter = 2000, warmup = 1000, chains = 4, cores = 4,
+          control = list(adapt_delta = 0.99))
+
+m1.5 <- add_ic(m1.5, ic = c("loo","waic"))
+
+save(m1.5, file = 'models/m1.5.rda')
+```
+
+```{r echo=F}
+load('models/m1.5.rda')
+```
+
+```{r}
+print(m1.5)
+```
+
+## 1.6. Compare models
+
+WAIC.
+
+```{r}
+compare_ic(m1.1, m1.2, m1.3, m1.4, m1.5, ic = "waic")
+```
+
+LOO.
+
+```{r}
+compare_ic(m1.1, m1.2, m1.3, m1.4, m1.5, ic = "loo")
+```
