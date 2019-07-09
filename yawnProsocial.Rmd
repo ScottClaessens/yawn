@@ -39,7 +39,7 @@ d
 
 We can visualize the number of yawns across the sample as a whole. 
 
-```{r}
+```{r warning=F, message=F, echo=F}
 d %>%
   ggplot(aes(x = numberYawns)) +
   geom_histogram(binwidth = 0.5) +
@@ -48,7 +48,7 @@ d %>%
 
 We can also see how this varies by condition.
 
-```{r}
+```{r warning=F, message=F, echo=F}
 d %>%
   ggplot(aes(x = numberYawns)) +
   geom_histogram(binwidth = 0.5) +
@@ -66,7 +66,7 @@ We utlise a Bayesian multilevel modelling approach, including random effects for
 
 Fit an intercept-only model.
 
-```{r eval=F}
+```{r eval=F, echo=F}
 m3.1 <- brm(data = d, family = zero_inflated_poisson,
             bf(numberYawns ~ 1 + offset(log(secs)) + (1 | ID),
                zi ~ 1 + (1 | ID)),
@@ -80,10 +80,7 @@ save(m3.1, file = 'models/m3.1.rda')
 
 ```{r echo=F}
 load('models/m3.1.rda')
-```
-
-```{r}
-print(m3.1)
+summary(m3.1)
 ```
 
 Let's interpret each parameter in turn. The zero-inflation parameter `zi` is -2.58. This is on the logit scale, so we need to calculate the inverse logit.
@@ -108,7 +105,7 @@ Let's calculate the average yawning rate once the yawning process gets started.
 
 The dogs yawn 0.21 times a minute, on average. Let's split this by ID.
 
-```{r}
+```{r warning=F, message=F, echo=F}
 brmstools::forest(m3.1, pars = 'Intercept', grouping = 'ID')
 ```
 
@@ -118,7 +115,7 @@ Remember, this is on the log scale. But it seems like there isn't much variation
 
 Next, we add condition to the model, also as a random effect grouped by individual dogs.
 
-```{r eval=F}
+```{r eval=F, echo=F}
 m3.2 <- brm(data = d, family = zero_inflated_poisson,
             bf(numberYawns ~ 0 + intercept + condition + offset(log(secs)) + 
                  (0 + intercept + condition | ID),
@@ -138,10 +135,7 @@ save(m3.2, file = 'models/m3.2.rda')
 
 ```{r echo=F}
 load('models/m3.2.rda')
-```
-
-```{r}
-print(m3.2)
+summary(m3.2)
 ```
 
 The condition parameter has 95% CIs crossing zero, suggesting that there is no difference in yawning rates between conditions. Let's calculate this directly.
@@ -160,16 +154,16 @@ post <- posterior_samples(m3.2)
   round(2)
 ```
 
-pMCMC shows that the difference between these is not substantial.
+Psoterior probability mass shows that the difference between these is not substantial.
 
 ```{r}
-sum(post$b_condition > 0) / 4000
+sum(post$b_condition < 0) / 4000
 ```
 
 Let's visualise this lack of a difference on the "yawns per minute" scale.
 
-```{r}
-fig1 <-
+```{r echo=F, warning=F, message=F}
+fig4 <-
   tibble(
     Antisocial = exp(post$b_intercept) * 60,
     Prosocial  = exp(post$b_intercept + post$b_condition) * 60
@@ -179,6 +173,7 @@ fig1 <-
   ggplot(aes(x = yawns, fill = Condition, colour = Condition)) +
   geom_density(alpha = 0.1) +
   xlab("Yawns per minute") +
+  xlim(c(0, 0.6)) +
   theme_classic() +
   theme(axis.line = element_blank(),
         axis.ticks = element_blank(),
@@ -186,22 +181,23 @@ fig1 <-
         axis.title.y = element_blank(),
         axis.title.x = element_text(margin = margin(t = 10)))
 
-fig1
+ggsave(fig4, file = "figures/fig4.pdf", width = 5, height = 3)
+
+fig4
 ```
 
 How does the effect of condition vary across individual dogs?
 
-```{r}
-brmstools::forest(m3.2, pars = 'condition', grouping = 'ID')
+```{r echo=F, warning=F, message=F}
+brmstools::forest(m3.2, pars = 'condition', grouping = 'ID') +
+  geom_vline(xintercept = 0, linetype = "dashed")
 ```
 
 Condition doesn't seem to have an effect for any individual dog either.
 
 ## 1.3. Trial-only model
 
-We replace condition with trial order in the model, also as a random effect grouped by individual dogs. This is to see if counterbalancing order has an effect on yawning.
-
-```{r eval=F}
+```{r eval=F, echo=F}
 m3.3 <- brm(data = d, family = zero_inflated_poisson,
             bf(numberYawns ~ 0 + intercept + trial + offset(log(secs)) + 
                  (0 + intercept + trial | ID),
@@ -221,19 +217,12 @@ save(m3.3, file = 'models/m3.3.rda')
 
 ```{r echo=F}
 load('models/m3.3.rda')
+summary(m3.3)
 ```
-
-```{r}
-print(m3.3)
-```
-
-Counterbalancing order does not have an effect on yawning.
 
 ## 1.4. Condition + Trial model
 
-We include both condition and trial order as additive effects.
-
-```{r eval=F}
+```{r eval=F, echo=F}
 m3.4 <- brm(data = d, family = zero_inflated_poisson,
             bf(numberYawns ~ 0 + intercept + condition + trial + offset(log(secs)) + 
                  (0 + intercept + condition + trial | ID),
@@ -255,19 +244,12 @@ save(m3.4, file = 'models/m3.4.rda')
 
 ```{r echo=F}
 load('models/m3.4.rda')
+summary(m3.4)
 ```
-
-```{r}
-print(m3.4)
-```
-
-The 95% CIs for the parameters still cross zero.
 
 ## 1.5. Interaction model
 
-Finally, we model the interaction between condition and trial order.
-
-```{r eval=F}
+```{r eval=F, echo=F}
 m3.5 <- brm(data = d, family = zero_inflated_poisson,
             bf(numberYawns ~ 0 + intercept + condition*trial + offset(log(secs)) + 
                  (0 + intercept + condition*trial | ID),
@@ -291,11 +273,29 @@ save(m3.5, file = 'models/m3.5.rda')
 
 ```{r echo=F}
 load('models/m3.5.rda')
+summary(m3.5)
 ```
 
+Are there any differences between cells in the 2x2 design?
+
 ```{r}
-print(m3.5)
+post <- posterior_samples(m3.5)
+
+# yawns per minute
+anti1rate <- exp(post$b_intercept) * 60
+anti2rate <- exp(post$b_intercept + post$b_trial) * 60
+pro1rate  <- exp(post$b_intercept + post$b_condition) * 60
+pro2rate  <- exp(post$b_intercept + post$b_condition + post$b_trial + post$`b_condition:trial`) * 60
+
+# no subtantial differences between cells
+sum(anti1rate - anti2rate < 0) / 4000
+sum(anti1rate - pro1rate < 0) / 4000
+sum(anti1rate - pro2rate < 0) / 4000
+sum(anti2rate - pro1rate < 0) / 4000
+sum(anti2rate - pro2rate < 0) / 4000
+sum(pro1rate - pro2rate < 0) / 4000
 ```
+
 
 ## 1.6. Compare models
 
@@ -319,7 +319,7 @@ model_weights(m3.1, m3.2, m3.3, m3.4, m3.5, weights = "loo") %>% round(3)
 
 Fit an intercept-only model with no zero-inflation assumption.
 
-```{r eval=F}
+```{r eval=F, echo=F}
 m4.1 <- brm(data = d, family = poisson,
             numberYawns ~ 1 + offset(log(secs)) + (1 | ID),
             iter = 2000, warmup = 1000, chains = 4, cores = 4,
@@ -332,10 +332,7 @@ save(m4.1, file = 'models/m4.1.rda')
 
 ```{r echo=F}
 load('models/m4.1.rda')
-```
-
-```{r}
-print(m4.1)
+summary(m4.1)
 ```
 
 Calculate the average yawning rate.
@@ -361,7 +358,7 @@ The zero-inflated model is slightly better, but not by much.
 
 Add condition to the model.
 
-```{r eval=F}
+```{r eval=F, echo=F}
 m4.2 <- brm(data = d, family = poisson,
             numberYawns ~ 0 + intercept + condition + offset(log(secs)) + 
                (0 + intercept + condition | ID),
@@ -377,13 +374,10 @@ save(m4.2, file = 'models/m4.2.rda')
 
 ```{r echo=F}
 load('models/m4.2.rda')
+summary(m4.2)
 ```
 
-```{r}
-print(m4.2)
-```
-
-As before, the condition parameter has 95% CIs crossing zero, suggesting that there is no difference in yawning rates between conditions. Let's calculate this directly.
+Difference between conditions?
 
 ```{r}
 post <- posterior_samples(m4.2)
@@ -399,7 +393,7 @@ post <- posterior_samples(m4.2)
   round(2)
 ```
 
-Estimates are not much different from the zero-inflated model. Again, pMCMC shows that the difference between these is not substantial.
+Estimates are not much different from the zero-inflated model. Again, posterior probability mass shows that the difference between these is not substantial.
 
 ```{r}
 sum(post$b_condition > 0) / 4000
@@ -407,9 +401,8 @@ sum(post$b_condition > 0) / 4000
 
 Let's visualise the difference with our Poisson model.
 
-```{r}
-fig2 <-
-  tibble(
+```{r echo=F, warning=F, message=F}
+tibble(
     Antisocial = exp(post$b_intercept) * 60,
     Prosocial  = exp(post$b_intercept + post$b_condition) * 60
     ) %>%
@@ -417,6 +410,7 @@ fig2 <-
   
   ggplot(aes(x = yawns, fill = Condition, colour = Condition)) +
   geom_density(alpha = 0.1) +
+  xlim(c(0,0.6)) +
   xlab("Yawns per minute") +
   theme_classic() +
   theme(axis.line = element_blank(),
@@ -424,8 +418,6 @@ fig2 <-
         axis.text.y = element_blank(),
         axis.title.y = element_blank(),
         axis.title.x = element_text(margin = margin(t = 10)))
-
-fig2
 ```
 
 Quick model comparison?
@@ -439,9 +431,7 @@ Both WAIC and LOO suggest that the Poisson model is substantially worse in this 
 
 ## 2.3. Trial-only model
 
-We replace condition with trial order in the model.
-
-```{r eval=F}
+```{r eval=F, echo=F}
 m4.3 <- brm(data = d, family = poisson,
             numberYawns ~ 0 + intercept + trial + offset(log(secs)) + 
                  (0 + intercept + trial | ID),
@@ -457,19 +447,12 @@ save(m4.3, file = 'models/m4.3.rda')
 
 ```{r echo=F}
 load('models/m4.3.rda')
+summary(m4.3)
 ```
-
-```{r}
-print(m4.3)
-```
-
-Again, counterbalancing order does not have an effect on yawning.
 
 ## 2.4. Condition + Trial model
 
-We include both condition and trial order as additive effects.
-
-```{r eval=F}
+```{r eval=F, echo=F}
 m4.4 <- brm(data = d, family = poisson,
           numberYawns ~ 0 + intercept + condition + trial + offset(log(secs)) + 
                (0 + intercept + condition + trial | ID),
@@ -486,19 +469,12 @@ save(m4.4, file = 'models/m4.4.rda')
 
 ```{r echo=F}
 load('models/m4.4.rda')
+summary(m4.4)
 ```
-
-```{r}
-print(m4.4)
-```
-
-The 95% CIs for the parameters still cross zero.
 
 ## 2.5. Interaction model
 
-Finally, we fit a Poisson version of the interaction between condition and trial order.
-
-```{r eval=F}
+```{r eval=F, echo=F}
 m4.5 <- brm(data = d, family = poisson,
           numberYawns ~ 0 + intercept + condition*trial + offset(log(secs)) + 
                (0 + intercept + condition*trial | ID),
@@ -516,10 +492,7 @@ save(m4.5, file = 'models/m4.5.rda')
 
 ```{r echo=F}
 load('models/m4.5.rda')
-```
-
-```{r}
-print(m4.5)
+summary(m4.5)
 ```
 
 ## 2.6. Compare models
@@ -540,10 +513,16 @@ compare_ic(m3.1, m3.2, m3.3, m3.4, m3.5,
            ic = "loo")
 ```
 
-Of every model fitted, `m3.4` seems to reign. How does this model do at prediction?
+Of every model fitted, `m3.5` seems to reign. How does this model do at prediction?
 
 ```{r}
-pp_check(m3.4)
+pp_check(m3.5)
 ```
 
 Posterior predictions are relatively accurate. But this model indicates no effect of condition.
+
+# Session Info
+
+```{r}
+sessionInfo()
+```

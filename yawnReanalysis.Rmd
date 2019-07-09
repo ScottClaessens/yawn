@@ -10,10 +10,9 @@ output:
     toc_float: true
 ---
 
-The purpose of this document is to re-analyse the data from seven studies of contagious yawning in dogs. These studies are:
+The purpose of this document is to re-analyse the data from six studies of contagious yawning in dogs. These studies are:
 
 - [Joly-Mascheroni et al. (2008)](https://royalsocietypublishing.org/doi/abs/10.1098/rsbl.2008.0333)
-- [Harr et al. (2009)](https://link.springer.com/article/10.1007/s10071-009-0233-0)
 - [O’Hara & Reeve (2011)](https://www.sciencedirect.com/science/article/pii/S0003347210004483)
 - [Silva et al. (2012)](https://link.springer.com/article/10.1007/s10071-012-0473-2)
 - [Madsen & Persson (2013)](https://link.springer.com/article/10.1007/s10071-012-0568-9)
@@ -32,6 +31,7 @@ library(brms)
 library(tidybayes)
 library(bayesplot)
 library(brmstools)
+library(ggridges)
 ```
 
 Load the data.
@@ -41,15 +41,19 @@ d <-
   read.csv('data/yawnReanalysis.csv') %>%
   as_tibble() %>%
   # create dummy variables for re-analysis
-  mutate(condition = ifelse(condition == "Control", 0, 1),
-         familiar  = ifelse(familiar  == "Unfamiliar", 0, 1))
+  mutate(condition    = ifelse(condition == "Control", 0, 1),
+         familiar     = ifelse(familiar  == "Unfamiliar", 0, 1),
+         type         = ifelse(type == "Shelter", 0, 1),
+         presentation = ifelse(presentation == "A", 0, 1),
+         live         = ifelse(live == "Recording", 0, 1),
+         demonstrator = ifelse(demonstrator == "Human", 0, 1))
 
 d
 ```
 
 Visualise the outcome.
 
-```{r message=F, warning=F}
+```{r message=F, warning=F, echo=F}
 d %>%
   ggplot(aes(x = numberYawns)) +
   geom_histogram(binwidth = 0.5) +
@@ -58,7 +62,7 @@ d %>%
 
 And split by study.
 
-```{r message=F, warning=F}
+```{r message=F, warning=F, echo=F}
 d %>%
   ggplot(aes(x = numberYawns)) +
   geom_histogram(binwidth = 0.5) +
@@ -78,17 +82,17 @@ $$
 
 where $p_i$ is the zero-inflation probability (so $1 - p_i$ is the probability of the process getting started). $\text{log(offset)}$ is the log of the exposure length, and simple algebra means that $\lambda_i$ is now the expected *rate* per exposure length, rather than the count.
 
-To make sure that assuming zero-inflation is not affecting our results, we will also run these models with a Poisson distribution without zero-inflation.
+To ensure that assuming zero-inflation is not affecting our results, we will also run these models with a Poisson distribution without zero-inflation.
 
 # 1. Fit zero-inflated Poisson models
 
 ## 1.1. Intercept-only model
 
-We utlise a Bayesian multilevel modelling approach here, including random effects for individual dogs nested within studies. Throughout, we use the same linear model to predict $\lambda_i$ (the rate of yawning) and $p_i$ (the probability of the yawning process never even getting started). The latter is called `zi` inside the model formula. 
+We utlise a Bayesian multilevel modelling approach here, including random effects for individual dogs nested within studies. Throughout, we use the same linear model to predict $\lambda_i$ (the rate of yawning) and $p_i$ (the probability of the yawning process never even getting started). The latter is called `zi` inside the model formula.
 
 To begin, we fit an intercept-only model.
 
-```{r eval=F}
+```{r echo=F, eval=F}
 m1.1 <- brm(data = d, family = zero_inflated_poisson,
           bf(numberYawns ~ 1 + offset(log(secs)) + (1 | study/ID),
              zi ~ 1 + (1 | study/ID)),
@@ -102,13 +106,10 @@ save(m1.1, file = 'models/m1.1.rda')
 
 ```{r echo=F}
 load('models/m1.1.rda')
+summary(m1.1)
 ```
 
-```{r}
-print(m1.1)
-```
-
-Let's interpret each parameter in turn. The zero-inflation parameter `zi` is xxxxx. This is on the logit scale, so we need to calculate the inverse logit.
+Let's interpret each parameter in turn. The zero-inflation parameter `zi` is -0.63. This is on the logit scale, so we need to calculate the inverse logit.
 
 ```{r}
 post <- posterior_samples(m1.1)
@@ -118,7 +119,7 @@ post <- posterior_samples(m1.1)
   round(2)
 ```
 
-The median probability of the yawning process getting started is xxxxxx.
+The median probability of the yawning process getting started is 0.65.
 
 Let's calculate the average yawning rate once the yawning process gets started.
 
@@ -128,19 +129,13 @@ Let's calculate the average yawning rate once the yawning process gets started.
   round(2)
 ```
 
-The dogs yawn xxxxx times a minute, on average. Let's split this by study.
-
-```{r}
-brmstools::forest(m1, pars = 'Intercept', grouping = 'study')
-```
-
-Average yawning rate is lowest in BT et al, but highest in SIL et al.
+The dogs yawn 0.16 times a minute, on average.
 
 ## 1.2. Condition-only model
 
 Next, we add condition to the model, also as a random effect grouped by individual dogs nested within studies.
 
-```{r eval=F}
+```{r echo=F, eval=F}
 m1.2 <- brm(data = d, family = zero_inflated_poisson,
           bf(numberYawns ~ 0 + intercept + condition + offset(log(secs)) + 
                (0 + intercept + condition | study/ID),
@@ -151,7 +146,7 @@ m1.2 <- brm(data = d, family = zero_inflated_poisson,
                     prior(logistic(0, 1), class = b, coef = "intercept", dpar = zi),
                     prior(normal(0, 1), class = b, coef = "condition", dpar = zi)),
           iter = 2000, warmup = 1000, chains = 4, cores = 4,
-          control = list(adapt_delta = 0.99))
+          control = list(adapt_delta = 0.99, max_treedepth = 15))
 
 m1.2 <- add_ic(m1.2, ic = c("loo","waic"))
 
@@ -160,28 +155,84 @@ save(m1.2, file = 'models/m1.2.rda')
 
 ```{r echo=F}
 load('models/m1.2.rda')
+summary(m1.2)
 ```
 
+Get difference between conditions.
+
 ```{r}
-print(m1.2)
+post <- posterior_samples(m1.2)
+
+# yawning rates (per minute)
+cond1 <- exp(post$b_intercept) * 60
+median(cond1)
+
+cond2 <- exp(post$b_intercept + post$b_condition) * 60
+median(cond2)
+
+diff <- cond2 - cond1
+
+# proportion of prob mass above zero
+sum(diff > 0) / 4000
 ```
+
+Bayes factor for condition parameter.
+
+```{r}
+(hyp1.2 <- hypothesis(m1.2, "condition > 0"))
+```
+
+Visualise effect of condition.
+
+```{r warning=F, message=F,echo=F}
+fig1 <-
+  tibble(
+    Control  = exp(post$b_intercept) * 60,
+    Yawning  = exp(post$b_intercept + post$b_condition) * 60
+    ) %>%
+  gather(Condition, yawns) %>%
+  
+  ggplot(aes(x = yawns, fill = Condition, colour = Condition)) +
+  geom_density(alpha = 0.1) +
+  xlab("Yawns per minute") +
+  xlim(c(0,0.6)) +
+  theme_classic() +
+  theme(axis.line = element_blank(),
+        axis.ticks = element_blank(),
+        axis.text.y = element_blank(),
+        axis.title.y = element_blank(),
+        axis.title.x = element_text(margin = margin(t = 10)))
+
+ggsave(fig1, file = "figures/fig1.pdf", width = 5, height = 3)
+
+fig1
+```
+
+The effect of condition across studies.
+
+```{r echo=F, message=F, warning=F}
+brmstools::forest(m1.2, pars = 'condition', grouping = 'study') +
+  geom_vline(xintercept = 0, linetype = "dashed")
+```
+
+BT et al. is the only study where the parameter crosses zero, and is also the largest study and the only one done entirely with shelter dogs. We should control for this later.
 
 ## 1.3. Familiarity-only model
 
 We replace condition with familiarity in the model, again as a random effect grouped by individual dogs nested within studies.
 
-```{r eval=F}
+```{r echo=F, eval=F}
 m1.3 <- brm(data = d, family = zero_inflated_poisson,
           bf(numberYawns ~ 0 + intercept + familiar + offset(log(secs)) + 
-               (0 + intercept + familiar | study/ID),
+               (0 + intercept | study/ID),
              zi ~ 0 + intercept + familiar + 
-               (0 + intercept + familiar | study/ID)),
+               (0 + intercept | study/ID)),
           prior = c(prior(student_t(3, -2, 10), class = b, coef = "intercept"),
                     prior(normal(0, 1), class = b, coef = "familiar"),
                     prior(logistic(0, 1), class = b, coef = "intercept", dpar = zi),
                     prior(normal(0, 1), class = b, coef = "familiar", dpar = zi)),
           iter = 2000, warmup = 1000, chains = 4, cores = 4,
-          control = list(adapt_delta = 0.99))
+          control = list(adapt_delta = 0.99, max_treedepth = 15))
 
 m1.3 <- add_ic(m1.3, ic = c("loo","waic"))
 
@@ -190,22 +241,19 @@ save(m1.3, file = 'models/m1.3.rda')
 
 ```{r echo=F}
 load('models/m1.3.rda')
-```
-
-```{r}
-print(m1.3)
+summary(m1.3)
 ```
 
 ## 1.4. Condition + Familiarity model
 
 We include both condition and familiarity as additive effects.
 
-```{r eval=F}
+```{r echo=F, eval=F}
 m1.4 <- brm(data = d, family = zero_inflated_poisson,
           bf(numberYawns ~ 0 + intercept + condition + familiar + offset(log(secs)) + 
-               (0 + intercept + condition + familiar | study/ID),
+               (0 + intercept + condition | study/ID),
              zi ~ 0 + intercept + condition + familiar + 
-               (0 + intercept + condition + familiar | study/ID)),
+               (0 + intercept + condition | study/ID)),
           prior = c(prior(student_t(3, -2, 10), class = b, coef = "intercept"),
                     prior(normal(0, 1), class = b, coef = "condition"),
                     prior(normal(0, 1), class = b, coef = "familiar"),
@@ -213,7 +261,7 @@ m1.4 <- brm(data = d, family = zero_inflated_poisson,
                     prior(normal(0, 1), class = b, coef = "condition", dpar = zi),
                     prior(normal(0, 1), class = b, coef = "familiar", dpar = zi)),
           iter = 2000, warmup = 1000, chains = 4, cores = 4,
-          control = list(adapt_delta = 0.99))
+          control = list(adapt_delta = 0.99, max_treedepth = 15))
 
 m1.4 <- add_ic(m1.4, ic = c("loo","waic"))
 
@@ -222,22 +270,43 @@ save(m1.4, file = 'models/m1.4.rda')
 
 ```{r echo=F}
 load('models/m1.4.rda')
+summary(m1.4)
 ```
+
+Get difference between conditions, controlling for familiarity.
 
 ```{r}
-print(m1.4)
+post <- posterior_samples(m1.4)
+
+# yawning rates (per minute)
+cond1 <- exp(post$b_intercept) * 60
+median(cond1)
+
+cond2 <- exp(post$b_intercept + post$b_condition) * 60
+median(cond2)
+
+diff <- cond2 - cond1
+
+# proportion of prob mass above zero
+sum(diff > 0) / 4000
 ```
 
-## 1.5. Interaction model
+Bayes factor for condition parameter.
 
-Finally, we allow condition and familiarity to interaction with one another.
+```{r}
+(hyp1.4 <- hypothesis(m1.4, "condition > 0"))
+```
 
-```{r eval=F}
+## 1.5. Condition*Familiarity model
+
+Finally, we allow condition and familiarity to interact with one another.
+
+```{r echo=F, eval=F}
 m1.5 <- brm(data = d, family = zero_inflated_poisson,
           bf(numberYawns ~ 0 + intercept + condition*familiar + offset(log(secs)) + 
-               (0 + intercept + condition*familiar | study/ID),
+               (0 + intercept + condition | study/ID),
              zi ~ 0 + intercept + condition*familiar + 
-               (0 + intercept + condition*familiar | study/ID)),
+               (0 + intercept + condition | study/ID)),
           prior = c(prior(student_t(3, -2, 10), class = b, coef = "intercept"),
                     prior(normal(0, 1), class = b, coef = "condition"),
                     prior(normal(0, 1), class = b, coef = "familiar"),
@@ -247,7 +316,7 @@ m1.5 <- brm(data = d, family = zero_inflated_poisson,
                     prior(normal(0, 1), class = b, coef = "familiar", dpar = zi),
                     prior(normal(0, 1), class = b, coef = "condition:familiar", dpar = zi)),
           iter = 2000, warmup = 1000, chains = 4, cores = 4,
-          control = list(adapt_delta = 0.99))
+          control = list(adapt_delta = 0.999, max_treedepth = 15))
 
 m1.5 <- add_ic(m1.5, ic = c("loo","waic"))
 
@@ -256,22 +325,479 @@ save(m1.5, file = 'models/m1.5.rda')
 
 ```{r echo=F}
 load('models/m1.5.rda')
+summary(m1.5)
 ```
+
+Get yawning rate in each cell of 2x2 design.
 
 ```{r}
-print(m1.5)
+post <- posterior_samples(m1.5)
+
+# yawning rates (per minute)
+cond1unfam <- exp(post$b_intercept) * 60
+cond2unfam <- exp(post$b_intercept + post$b_condition) * 60
+cond1fam   <- exp(post$b_intercept + post$b_familiar) * 60
+cond2fam   <- exp(post$b_intercept + post$b_condition + 
+                    post$b_familiar + post$`b_condition:familiar`) * 60
+
+median(cond1unfam)
+median(cond2unfam)
+median(cond1fam)
+median(cond2fam)
 ```
 
-## 1.6. Compare models
+Are there any differences in yawning rate? Get proportions of prob mass above zero for each contrast.
 
-WAIC.
+```{r}
+diff1 <- cond2fam - cond1unfam
+diff2 <- cond2fam - cond2unfam
+diff3 <- cond2fam - cond1fam
+diff4 <- cond1fam - cond1unfam
+diff5 <- cond1fam - cond2unfam
+diff6 <- cond2unfam - cond1unfam
+
+sum(diff1 > 0) / 4000
+sum(diff2 > 0) / 4000
+sum(diff3 > 0) / 4000
+sum(diff4 > 0) / 4000
+sum(diff5 > 0) / 4000
+sum(diff6 > 0) / 4000
+```
+
+Does the effect of condition differ between familiar and unfamiliar demonstrators? Interaction effect.
+
+```{r}
+sum(diff3 - diff6 > 0) / 4000
+```
+
+Visualise.
+
+```{r warning=F, message=F, echo=F}
+fig2 <-
+  tibble(
+    ControlUnfamiliar  = exp(post$b_intercept) * 60,
+    YawningUnfamiliar  = exp(post$b_intercept + post$b_condition) * 60,
+    ControlFamiliar    = exp(post$b_intercept + post$b_familiar) * 60,
+    YawningFamiliar    = exp(post$b_intercept + post$b_condition 
+                             + post$b_familiar + post$`b_condition:familiar`) * 60
+    ) %>%
+  gather(cell, yawns) %>%
+  mutate(Condition   = rep(rep(c("Control", "Yawning"), each = 4000), times = 2),
+         Familiarity = rep(c("Unfamiliar", "Familiar"), each = 8000)) %>%
+  
+  ggplot(aes(x = yawns, fill = Condition, colour = Condition)) +
+  geom_density(alpha = 0.1) +
+  xlab("Yawns per minute") +
+  xlim(c(0,0.6)) +
+  facet_wrap(.~Familiarity) +
+  theme_classic() +
+  theme(axis.line = element_blank(),
+        axis.ticks = element_blank(),
+        axis.text.y = element_blank(),
+        axis.title.y = element_blank(),
+        axis.title.x = element_text(margin = margin(t = 10)))
+
+ggsave(fig2, file = "figures/fig2.pdf", width = 6, height = 3)
+
+fig2
+```
+
+Let's compare all models so far. WAIC.
 
 ```{r}
 compare_ic(m1.1, m1.2, m1.3, m1.4, m1.5, ic = "waic")
+model_weights(m1.1, m1.2, m1.3, m1.4, m1.5, weights = "waic") %>% round(2)
 ```
 
 LOO.
 
 ```{r}
 compare_ic(m1.1, m1.2, m1.3, m1.4, m1.5, ic = "loo")
+model_weights(m1.1, m1.2, m1.3, m1.4, m1.5, weights = "loo") %>% round(2)
+```
+
+The best models are `m1.2`, `m1.4`, and `m1.5` - all the models that have a condition parameter. None of these models are substantially better than one another. This suggests that condition has an effect, but familiarity doesn't interact with it.
+
+Going forward, we choose the condition-only model to continue analysing, as the most parsmionious model. Next, we add controls to see if the effect of condition is robust.
+
+## 1.6. Condition + Type model
+
+We include both condition and type (shelter/pet) as additive effects.
+
+```{r echo=F, eval=F}
+m1.6 <- brm(data = d, family = zero_inflated_poisson,
+          bf(numberYawns ~ 0 + intercept + condition + type + offset(log(secs)) + 
+               (0 + intercept + condition | study/ID),
+             zi ~ 0 + intercept + condition + type + 
+               (0 + intercept + condition | study/ID)),
+          prior = c(prior(student_t(3, -2, 10), class = b, coef = "intercept"),
+                    prior(normal(0, 1), class = b, coef = "condition"),
+                    prior(normal(0, 1), class = b, coef = "type"),
+                    prior(logistic(0, 1), class = b, coef = "intercept", dpar = zi),
+                    prior(normal(0, 1), class = b, coef = "condition", dpar = zi),
+                    prior(normal(0, 1), class = b, coef = "type", dpar = zi)),
+          iter = 2000, warmup = 1000, chains = 4, cores = 4,
+          control = list(adapt_delta = 0.995, max_treedepth = 15))
+
+m1.6 <- add_ic(m1.6, ic = c("loo","waic"))
+
+save(m1.6, file = 'models/m1.6.rda')
+```
+
+```{r echo=F}
+load('models/m1.6.rda')
+summary(m1.6)
+```
+
+Effect of condition?
+
+```{r}
+post <- posterior_samples(m1.6)
+sum(post$b_condition > 0) / 4000
+```
+
+Similar to before. Bayes factor?
+
+```{r}
+(hyp1.6 <- hypothesis(m1.6, "condition > 0"))
+```
+
+Model comparison.
+
+```{r}
+compare_ic(m1.2, m1.6, ic = "waic")
+compare_ic(m1.2, m1.6, ic = "loo")
+```
+
+
+## 1.7. Condition + Presentation model
+
+```{r echo=F, eval=F}
+m1.7 <- brm(data = d, family = zero_inflated_poisson,
+          bf(numberYawns ~ 0 + intercept + condition + presentation + offset(log(secs)) + 
+               (0 + intercept + condition | study/ID),
+             zi ~ 0 + intercept + condition + presentation + 
+               (0 + intercept + condition | study/ID)),
+          prior = c(prior(student_t(3, -2, 10), class = b, coef = "intercept"),
+                    prior(normal(0, 1), class = b, coef = "condition"),
+                    prior(normal(0, 1), class = b, coef = "presentation"),
+                    prior(logistic(0, 1), class = b, coef = "intercept", dpar = zi),
+                    prior(normal(0, 1), class = b, coef = "condition", dpar = zi),
+                    prior(normal(0, 1), class = b, coef = "presentation", dpar = zi)),
+          iter = 2000, warmup = 1000, chains = 4, cores = 4,
+          control = list(adapt_delta = 0.995, max_treedepth = 15))
+
+m1.7 <- add_ic(m1.7, ic = c("loo","waic"))
+
+save(m1.7, file = 'models/m1.7.rda')
+```
+
+```{r echo=F}
+load('models/m1.7.rda')
+summary(m1.7)
+```
+
+The effect of condition persists when controlling for presentation type (video and audio or audio-only).
+
+```{r}
+post <- posterior_samples(m1.7)
+sum(post$b_condition > 0) / 4000
+```
+
+Bayes factor.
+
+```{r}
+(hyp1.7 <- hypothesis(m1.7, "condition > 0"))
+```
+
+Model comparison.
+
+```{r}
+compare_ic(m1.2, m1.7, ic = "waic")
+compare_ic(m1.2, m1.7, ic = "loo")
+```
+
+`m1.7` surpasses `m1.2`. This is because presentation type seems to have an effect on yawning rate: dogs seems to yawn less when stimuli are both visual and auditory, rather than only auditory.
+
+## 1.8. Condition + Live model
+
+```{r echo=F, eval=F}
+m1.8 <- brm(data = d, family = zero_inflated_poisson,
+          bf(numberYawns ~ 0 + intercept + condition + live + offset(log(secs)) + 
+               (0 + intercept + condition | study/ID),
+             zi ~ 0 + intercept + condition + live + 
+               (0 + intercept + condition | study/ID)),
+          prior = c(prior(student_t(3, -2, 10), class = b, coef = "intercept"),
+                    prior(normal(0, 1), class = b, coef = "condition"),
+                    prior(normal(0, 1), class = b, coef = "live"),
+                    prior(logistic(0, 1), class = b, coef = "intercept", dpar = zi),
+                    prior(normal(0, 1), class = b, coef = "condition", dpar = zi),
+                    prior(normal(0, 1), class = b, coef = "live", dpar = zi)),
+          iter = 2000, warmup = 1000, chains = 4, cores = 4,
+          control = list(adapt_delta = 0.995, max_treedepth = 15))
+
+m1.8 <- add_ic(m1.8, ic = c("loo","waic"))
+
+save(m1.8, file = 'models/m1.8.rda')
+```
+
+```{r echo=F}
+load('models/m1.8.rda')
+summary(m1.8)
+```
+
+The effect of condition persists when controlling for whether the demonstration was live or recorded.
+
+```{r}
+post <- posterior_samples(m1.8)
+sum(post$b_condition > 0) / 4000
+```
+
+Bayes factor.
+
+```{r}
+(hyp1.8 <- hypothesis(m1.8, "condition > 0"))
+```
+
+Model comparison.
+
+```{r}
+compare_ic(m1.2, m1.8, ic = "waic")
+compare_ic(m1.2, m1.8, ic = "loo")
+```
+
+## 1.9. Condition + Demonstrator model
+
+```{r echo=F, eval=F}
+m1.9 <- brm(data = d, family = zero_inflated_poisson,
+          bf(numberYawns ~ 0 + intercept + condition + demonstrator + offset(log(secs)) + 
+               (0 + intercept + condition | study/ID),
+             zi ~ 0 + intercept + condition + demonstrator + 
+               (0 + intercept + condition | study/ID)),
+          prior = c(prior(student_t(3, -2, 10), class = b, coef = "intercept"),
+                    prior(normal(0, 1), class = b, coef = "condition"),
+                    prior(normal(0, 1), class = b, coef = "demonstrator"),
+                    prior(logistic(0, 1), class = b, coef = "intercept", dpar = zi),
+                    prior(normal(0, 1), class = b, coef = "condition", dpar = zi),
+                    prior(normal(0, 1), class = b, coef = "demonstrator", dpar = zi)),
+          iter = 2000, warmup = 1000, chains = 4, cores = 4,
+          control = list(adapt_delta = 0.995, max_treedepth = 15))
+
+m1.9 <- add_ic(m1.9, ic = c("loo","waic"))
+
+save(m1.9, file = 'models/m1.9.rda')
+```
+
+```{r echo=F}
+load('models/m1.9.rda')
+summary(m1.9)
+```
+
+The effect of condition persists.
+
+```{r}
+post <- posterior_samples(m1.9)
+sum(post$b_condition > 0) / 4000
+```
+
+Bayes factor.
+
+```{r}
+(hyp1.9 <- hypothesis(m1.9, "condition > 0"))
+```
+
+Model comparison.
+
+```{r}
+compare_ic(m1.2, m1.9, ic = "waic")
+compare_ic(m1.2, m1.9, ic = "loo")
+```
+
+## 1.10. Full model
+
+```{r echo=F, eval=F}
+m1.10 <- brm(data = d, family = zero_inflated_poisson,
+             bf(numberYawns ~ 0 + intercept + condition + presentation + type + 
+                  demonstrator + familiar + live + offset(log(secs)) + 
+                  (0 + intercept + condition | study/ID),
+                zi ~ 0 + intercept + condition + presentation + type + 
+                  demonstrator + familiar + live +
+                  (0 + intercept + condition | study/ID)),
+             prior = c(prior(student_t(3, -2, 10), class = b, coef = "intercept"),
+                       prior(normal(0, 1), class = b, coef = "condition"),
+                       prior(normal(0, 1), class = b, coef = "presentation"),
+                       prior(normal(0, 1), class = b, coef = "type"),
+                       prior(normal(0, 1), class = b, coef = "demonstrator"),
+                       prior(normal(0, 1), class = b, coef = "familiar"),
+                       prior(normal(0, 1), class = b, coef = "live"),
+                       prior(logistic(0, 1), class = b, coef = "intercept", dpar = zi),
+                       prior(normal(0, 1), class = b, coef = "condition", dpar = zi),
+                       prior(normal(0, 1), class = b, coef = "presentation", dpar = zi),
+                       prior(normal(0, 1), class = b, coef = "type", dpar = zi),
+                       prior(normal(0, 1), class = b, coef = "demonstrator", dpar = zi),
+                       prior(normal(0, 1), class = b, coef = "familiar", dpar = zi),
+                       prior(normal(0, 1), class = b, coef = "live", dpar = zi)),
+             iter = 2000, warmup = 1000, chains = 4, cores = 4,
+             control = list(adapt_delta = 0.999, max_treedepth = 15))
+
+m1.10 <- add_ic(m1.10, ic = c("loo","waic"))
+
+save(m1.10, file = 'models/m1.10.rda')
+```
+
+```{r echo=F}
+load('models/m1.10.rda')
+summary(m1.10)
+```
+
+```{r}
+post <- posterior_samples(m1.10)
+sum(post$b_condition > 0) / 4000
+```
+
+Bayes factor.
+
+```{r}
+(hyp1.10 <- hypothesis(m1.10, "condition > 0"))
+```
+
+Model comparison.
+
+```{r}
+compare_ic(m1.2, m1.6, m1.7, m1.8, m1.9, m1.10, ic = "waic")
+compare_ic(m1.2, m1.6, m1.7, m1.8, m1.9, m1.10, ic = "loo")
+```
+
+## 1.11. Plot condition parameter with controls
+
+```{r message=F, warning=F, echo=F}
+fig3 <-
+  tibble(
+    `Condition`                = (exp(posterior_samples(m1.2)$b_intercept + posterior_samples(m1.2)$b_condition) - exp(posterior_samples(m1.2)$b_intercept))*60,
+    `Condition + Type`         = (exp(posterior_samples(m1.6)$b_intercept + posterior_samples(m1.6)$b_condition) - exp(posterior_samples(m1.2)$b_intercept))*60,
+    `Condition + Presentation` = (exp(posterior_samples(m1.7)$b_intercept + posterior_samples(m1.7)$b_condition) - exp(posterior_samples(m1.2)$b_intercept))*60,
+    `Condition + Live`         = (exp(posterior_samples(m1.8)$b_intercept + posterior_samples(m1.8)$b_condition) - exp(posterior_samples(m1.2)$b_intercept))*60,
+    `Condition + Demonstrator` = (exp(posterior_samples(m1.9)$b_intercept + posterior_samples(m1.9)$b_condition) - exp(posterior_samples(m1.2)$b_intercept))*60,
+    `Full model`               = (exp(posterior_samples(m1.10)$b_intercept + posterior_samples(m1.10)$b_condition) - exp(posterior_samples(m1.10)$b_intercept))*60
+  ) %>%
+  gather(model, samples) %>%
+  
+  ggplot(aes(x = samples, y = fct_rev(model))) +
+  geom_density_ridges2(fill = "grey90") +
+  geom_vline(xintercept = 0, linetype = "dashed") +
+  annotate("text", x = 0.75, y = seq(1.4,6.4,by=1), label = c("94%","95%","95%","96%","96%","95%")) +
+  annotate("text", x = 0.75, y = 7, label = "Prob mass above zero") +
+  xlim(c(-0.25,1.25)) +
+  xlab("Difference in yawning rate (per min) between conditions") +
+  coord_cartesian(clip = "off") +
+  theme_classic() +
+  theme(axis.line = element_blank(),
+        axis.ticks = element_blank(),
+        axis.title.y = element_blank(),
+        axis.title.x = element_text(margin = margin(t = 10)))
+
+ggsave(fig3, file = "figures/fig3.pdf", width = 8, height = 4.5)
+
+fig3
+```
+
+# 2. Fit Poisson models
+
+## 2.1. Intercept-only model
+
+We remove the assumption of zero-inflation and fit an intercept-only Poisson model.
+
+```{r echo=F, eval=F}
+m2.1 <- brm(data = d, family = poisson,
+            numberYawns ~ 1 + offset(log(secs)) + (1 | study/ID),
+            iter = 2000, warmup = 1000, chains = 4, cores = 4,
+            control = list(adapt_delta = 0.99))
+
+m2.1 <- add_ic(m2.1, ic = c("loo","waic"))
+
+save(m2.1, file = 'models/m2.1.rda')
+```
+
+```{r echo=F}
+load('models/m2.1.rda')
+summary(m2.1)
+```
+
+```{r}
+post <- posterior_samples(m2.1)
+
+(exp(post$b_Intercept) * 60) %>% # yawns per minute
+  median() %>%
+  round(2)
+```
+
+The dogs yawn 0.09 times a minute, on average. Predictably, this is less than estimated by the zero-inflated model.
+
+Model comparison?
+
+```{r}
+compare_ic(m1.1, m2.1)
+```
+
+The zero-inflated model is superior.
+
+## 2.2. Condition-only model
+
+```{r echo=F, eval=F}
+m2.2 <- brm(data = d, family = poisson,
+            numberYawns ~ 0 + intercept + condition + offset(log(secs)) + 
+              (0 + intercept + condition | study/ID),
+            prior = c(prior(student_t(3, -2, 10), class = b, coef = "intercept"),
+                      prior(normal(0, 1), class = b, coef = "condition")),
+            iter = 2000, warmup = 1000, chains = 4, cores = 4,
+            control = list(adapt_delta = 0.99, max_treedepth = 15))
+
+m2.2 <- add_ic(m2.2, ic = c("loo","waic"))
+
+save(m2.2, file = 'models/m2.2.rda')
+```
+
+```{r echo=F}
+load('models/m2.2.rda')
+summary(m2.2)
+```
+
+Get difference between conditions.
+
+```{r}
+post <- posterior_samples(m2.2)
+
+# yawning rates (per minute)
+cond1 <- exp(post$b_intercept) * 60
+median(cond1)
+
+cond2 <- exp(post$b_intercept + post$b_condition) * 60
+median(cond2)
+
+diff <- cond2 - cond1
+
+# proportion of prob mass above zero
+sum(diff > 0) / 4000
+```
+
+Bayes factor for condition parameter.
+
+```{r}
+(hyp2.2 <- hypothesis(m2.2, "condition > 0"))
+```
+
+The effect of condition is reduced in the Poisson model.
+
+Model comparison?
+
+```{r}
+compare_ic(m1.2, m2.2)
+```
+
+Again, this model is worse than its zero-inflated counterpart. For this reason, it's probably not worth re-running all the previous zero-inflated models as standard Poisson models.
+
+# Session Info
+
+```{r}
+sessionInfo()
 ```
