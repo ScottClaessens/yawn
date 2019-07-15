@@ -46,7 +46,8 @@ d <-
          type         = ifelse(type == "Shelter", 0, 1),
          presentation = ifelse(presentation == "A", 0, 1),
          live         = ifelse(live == "Recording", 0, 1),
-         demonstrator = ifelse(demonstrator == "Human", 0, 1))
+         demonstrator = ifelse(demonstrator == "Human", 0, 1),
+         male         = ifelse(gender == 'F', 0, 1))
 
 d
 ```
@@ -700,6 +701,110 @@ ggsave(fig3, file = "figures/fig3.pdf", width = 8, height = 4.5)
 
 fig3
 ```
+
+## 1.12. Condition*Gender interaction
+
+```{r echo=F, eval=F}
+m1.11 <- brm(data = d, family = zero_inflated_poisson,
+             bf(numberYawns ~ 0 + intercept + condition*male + offset(log(secs)) + 
+                  (0 + intercept + condition*male | study/ID),
+                zi ~ 0 + intercept + condition*male + 
+                  (0 + intercept + condition*male | study/ID)),
+             prior = c(prior(student_t(3, -2, 10), class = b, coef = "intercept"),
+                       prior(normal(0, 1), class = b, coef = "condition"),
+                       prior(normal(0, 1), class = b, coef = "male"),
+                       prior(normal(0, 1), class = b, coef = "condition:male"),
+                       prior(logistic(0, 1), class = b, coef = "intercept", dpar = zi),
+                       prior(normal(0, 1), class = b, coef = "condition", dpar = zi),
+                       prior(normal(0, 1), class = b, coef = "male", dpar = zi),
+                       prior(normal(0, 1), class = b, coef = "condition:male", dpar = zi)),
+             iter = 2000, warmup = 1000, chains = 4, cores = 4,
+             control = list(adapt_delta = 0.999, max_treedepth = 15))
+
+m1.11 <- add_ic(m1.11, ic = c("loo","waic"))
+
+save(m1.11, file = 'models/m1.11.rda')
+```
+
+```{r echo=F}
+load('models/m1.11.rda')
+summary(m1.11)
+```
+
+```{r}
+post <- posterior_samples(m1.11)
+
+# yawning rates (per minute)
+cond1f <- exp(post$b_intercept) * 60
+cond2f <- exp(post$b_intercept + post$b_condition) * 60
+cond1m <- exp(post$b_intercept + post$b_male) * 60
+cond2m <- exp(post$b_intercept + post$b_condition + 
+                    post$b_male + post$`b_condition:male`) * 60
+
+median(cond1f)
+median(cond2f)
+median(cond1m)
+median(cond2m)
+```
+
+Are there any differences in yawning rate? Get proportions of prob mass above zero for each contrast.
+
+```{r}
+diff1 <- cond2m - cond1f
+diff2 <- cond2m - cond2f
+diff3 <- cond2m - cond1m
+diff4 <- cond1m - cond1f
+diff5 <- cond1m - cond2f
+diff6 <- cond2f - cond1f
+
+sum(diff1 > 0) / 4000
+sum(diff2 > 0) / 4000
+sum(diff3 > 0) / 4000
+sum(diff4 > 0) / 4000
+sum(diff5 > 0) / 4000
+sum(diff6 > 0) / 4000
+```
+
+Does the effect of condition differ between familiar and unfamiliar demonstrators? Interaction effect.
+
+```{r}
+sum(diff3 - diff6 > 0) / 4000
+```
+
+Visualise.
+
+```{r warning=F, message=F, echo=F}
+  tibble(
+    ControlUnfamiliar  = exp(post$b_intercept) * 60,
+    YawningUnfamiliar  = exp(post$b_intercept + post$b_condition) * 60,
+    ControlFamiliar    = exp(post$b_intercept + post$b_male) * 60,
+    YawningFamiliar    = exp(post$b_intercept + post$b_condition 
+                             + post$b_male + post$`b_condition:male`) * 60
+    ) %>%
+  gather(cell, yawns) %>%
+  mutate(Condition   = rep(rep(c("Control", "Yawning"), each = 4000), times = 2),
+         Gender      = rep(c("Female", "Male"), each = 8000)) %>%
+  
+  ggplot(aes(x = yawns, fill = Condition, colour = Condition)) +
+  geom_density(alpha = 0.1) +
+  xlab("Yawns per minute") +
+  xlim(c(0,0.6)) +
+  facet_wrap(.~Gender) +
+  theme_classic() +
+  theme(axis.line = element_blank(),
+        axis.ticks = element_blank(),
+        axis.text.y = element_blank(),
+        axis.title.y = element_blank(),
+        axis.title.x = element_text(margin = margin(t = 10)))
+```
+
+Model comparison.
+
+```{r}
+compare_ic(m1.2, m1.11)
+```
+
+This interaction model is worse than its condition-only counterpart.
 
 # 2. Fit Poisson models
 
