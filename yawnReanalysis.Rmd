@@ -32,6 +32,7 @@ library(tidybayes)
 library(bayesplot)
 library(brmstools)
 library(ggridges)
+library(cowplot)
 ```
 
 Load the data.
@@ -110,6 +111,12 @@ load('models/m1.1.rda')
 summary(m1.1)
 ```
 
+What priors did we use?
+
+```{r echo=F}
+prior_summary(m1.1)
+```
+
 Let's interpret each parameter in turn. The zero-inflation parameter `zi` is -0.63. This is on the logit scale, so we need to calculate the inverse logit.
 
 ```{r}
@@ -159,6 +166,12 @@ load('models/m1.2.rda')
 summary(m1.2)
 ```
 
+What priors did we use?
+
+```{r echo=F}
+prior_summary(m1.2)
+```
+
 Get difference between conditions.
 
 ```{r}
@@ -186,13 +199,29 @@ Bayes factor for condition parameter.
 Visualise effect of condition.
 
 ```{r warning=F, message=F,echo=F}
-fig1 <-
+fig3_inset <-
+  tibble(
+    diff  = (exp(post$b_intercept + post$b_condition) - 
+               exp(post$b_intercept)) * 60
+    ) %>%
+  ggplot(aes(x = diff)) +
+  geom_density(fill = "grey90") +
+  geom_vline(xintercept = 0, linetype = "dashed") +
+  xlab("difference") +
+  xlim(c(-0.25,0.5)) +
+  theme_classic() +
+  theme(axis.line = element_blank(),
+        axis.ticks = element_blank(),
+        axis.text.y = element_blank(),
+        axis.title.y = element_blank(),
+        text = element_text(size = 9))
+
+fig3 <-
   tibble(
     Control  = exp(post$b_intercept) * 60,
     Yawning  = exp(post$b_intercept + post$b_condition) * 60
     ) %>%
   gather(Condition, yawns) %>%
-  
   ggplot(aes(x = yawns, fill = Condition, colour = Condition)) +
   geom_density(alpha = 0.1) +
   xlab("Yawns per minute") +
@@ -202,18 +231,46 @@ fig1 <-
         axis.ticks = element_blank(),
         axis.text.y = element_blank(),
         axis.title.y = element_blank(),
-        axis.title.x = element_text(margin = margin(t = 10)))
+        axis.title.x = element_text(margin = margin(t = 10))) +
+  annotation_custom(ggplotGrob(fig3_inset), xmin = 0.3, xmax = 0.55,
+                    ymin = 7, ymax = 17)
 
-ggsave(fig1, file = "figures/fig1.pdf", width = 5, height = 3)
+fig3
 
-fig1
+# save for publication
+ggsave(file = "figures/fig3.pdf", fig3, width = 6, height = 4)
 ```
 
 The effect of condition across studies.
 
 ```{r echo=F, message=F, warning=F}
-brmstools::forest(m1.2, pars = 'condition', grouping = 'study') +
-  geom_vline(xintercept = 0, linetype = "dashed")
+fig2a <-
+  tibble(
+    `Average`    = (exp(post$b_intercept + post$b_condition) - exp(post$b_intercept)) * 60,
+    `BT et al.`  = (exp(post$b_intercept + post$`r_study[BT.et.al,intercept]` + post$b_condition + post$`r_study[BT.et.al,condition]`) - exp(post$b_intercept + post$`r_study[BT.et.al,intercept]`)) * 60,
+    `JM et al.`  = (exp(post$b_intercept + post$`r_study[JM.et.al,intercept]` + post$b_condition + post$`r_study[JM.et.al,condition]`) - exp(post$b_intercept + post$`r_study[JM.et.al,intercept]`)) * 60,
+    `MAD et al.` = (exp(post$b_intercept + post$`r_study[MAD.et.al,intercept]` + post$b_condition + post$`r_study[MAD.et.al,condition]`) - exp(post$b_intercept + post$`r_study[MAD.et.al,intercept]`)) * 60,
+    `OHA et al.` = (exp(post$b_intercept + post$`r_study[OHA.et.al,intercept]` + post$b_condition + post$`r_study[OHA.et.al,condition]`) - exp(post$b_intercept + post$`r_study[OHA.et.al,intercept]`)) * 60,
+    `ROM et al.` = (exp(post$b_intercept + post$`r_study[ROM.et.al,intercept]` + post$b_condition + post$`r_study[ROM.et.al,condition]`) - exp(post$b_intercept + post$`r_study[ROM.et.al,intercept]`)) * 60,
+    `SIL et al.` = (exp(post$b_intercept + post$`r_study[SIL.et.al,intercept]` + post$b_condition + post$`r_study[SIL.et.al,condition]`) - exp(post$b_intercept + post$`r_study[SIL.et.al,intercept]`)) * 60
+  ) %>%
+  gather(study, samples) %>%
+  
+  ggplot(aes(x = samples, y = study)) +
+  geom_density_ridges2(fill = "grey90") +
+  geom_vline(xintercept = 0, linetype = "dashed") +
+  annotate("text", x = 0.6, y = seq(1.4,7.4,by=1), label = c("0.95","0.49","0.99","0.99","0.99","0.98","0.98")) +
+  annotate("text", x = 0.6, y = 8, label = "PPM") +
+  xlim(c(-0.2,0.75)) +
+  xlab("Difference in yawning rate (per min) between conditions") +
+  coord_cartesian(clip = "off") +
+  theme_classic() +
+  theme(axis.line = element_blank(),
+        axis.ticks = element_blank(),
+        axis.title.y = element_blank(),
+        axis.title.x = element_text(margin = margin(t = 10)))
+
+fig2a
 ```
 
 BT et al. is the only study where the parameter crosses zero, and is also the largest study and the only one done entirely with shelter dogs. We should control for this later.
@@ -245,6 +302,11 @@ load('models/m1.3.rda')
 summary(m1.3)
 ```
 
+What priors did we use?
+
+```{r echo=F}
+prior_summary(m1.3)
+```
 ## 1.4. Condition + Familiarity model
 
 We include both condition and familiarity as additive effects.
@@ -272,6 +334,12 @@ save(m1.4, file = 'models/m1.4.rda')
 ```{r echo=F}
 load('models/m1.4.rda')
 summary(m1.4)
+```
+
+What priors did we use?
+
+```{r echo=F}
+prior_summary(m1.4)
 ```
 
 Get difference between conditions, controlling for familiarity.
@@ -329,6 +397,12 @@ load('models/m1.5.rda')
 summary(m1.5)
 ```
 
+What priors did we use?
+
+```{r echo=F}
+prior_summary(m1.5)
+```
+
 Get yawning rate in each cell of 2x2 design.
 
 ```{r}
@@ -374,7 +448,50 @@ sum(diff3 - diff6 > 0) / 4000
 Visualise.
 
 ```{r warning=F, message=F, echo=F}
-fig2 <-
+fig4_insetUnfamiliar <-
+  tibble(
+    diff  = (exp(post$b_intercept + post$b_condition) - exp(post$b_intercept)) * 60
+    ) %>%
+  ggplot(aes(x = diff)) +
+  geom_density(fill = "grey90") +
+  geom_vline(xintercept = 0, linetype = "dashed") +
+  xlab("difference") +
+  xlim(c(-0.25,0.5)) +
+  theme_classic() +
+  theme(axis.line = element_blank(),
+        axis.ticks = element_blank(),
+        axis.text.y = element_blank(),
+        axis.title.y = element_blank(),
+        text = element_text(size = 9))
+
+fig4_insetFamiliar <-
+  tibble(
+    diff  = (exp(post$b_intercept + post$b_familiar + post$b_condition + post$`b_condition:familiar`) 
+             - exp(post$b_intercept + post$b_familiar)) * 60
+    ) %>%
+  ggplot(aes(x = diff)) +
+  geom_density(fill = "grey90") +
+  geom_vline(xintercept = 0, linetype = "dashed") +
+  xlab("difference") +
+  xlim(c(-0.25,0.5)) +
+  theme_classic() +
+  theme(axis.line = element_blank(),
+        axis.ticks = element_blank(),
+        axis.text.y = element_blank(),
+        axis.title.y = element_blank(),
+        text = element_text(size = 9))
+
+# custom function for inset plots inside facetted plots
+annotation_custom2 <- function (grob, xmin = -Inf, xmax = Inf, ymin = -Inf, ymax = Inf, data) 
+  {
+    layer(data = data, stat = StatIdentity, position = PositionIdentity, 
+          geom = ggplot2:::GeomCustomAnn,
+          inherit.aes = TRUE, params = list(grob = grob, 
+                                            xmin = xmin, xmax = xmax, 
+                                            ymin = ymin, ymax = ymax))
+  }
+
+fig4 <-
   tibble(
     ControlUnfamiliar  = exp(post$b_intercept) * 60,
     YawningUnfamiliar  = exp(post$b_intercept + post$b_condition) * 60,
@@ -390,17 +507,24 @@ fig2 <-
   geom_density(alpha = 0.1) +
   xlab("Yawns per minute") +
   xlim(c(0,0.6)) +
-  facet_wrap(.~Familiarity) +
+  facet_wrap(.~fct_rev(Familiarity)) +
   theme_classic() +
   theme(axis.line = element_blank(),
         axis.ticks = element_blank(),
         axis.text.y = element_blank(),
         axis.title.y = element_blank(),
-        axis.title.x = element_text(margin = margin(t = 10)))
+        axis.title.x = element_text(margin = margin(t = 10))) +
+  annotation_custom2(ggplotGrob(fig4_insetFamiliar), 
+                     data=data.frame(Familiarity="Familiar", Condition = NA, yawns = 1),
+                     xmin=0.25, xmax=0.6, ymin=10, ymax=18) +
+  annotation_custom2(ggplotGrob(fig4_insetUnfamiliar), 
+                     data=data.frame(Familiarity="Unfamiliar", Condition = NA, yawns = 1),
+                     xmin=0.25, xmax=0.6, ymin=10, ymax=18)
 
-ggsave(fig2, file = "figures/fig2.pdf", width = 6, height = 3)
+fig4
 
-fig2
+# save for publication
+ggsave(fig4, file = "figures/fig4.pdf", width = 6, height = 4)
 ```
 
 Let's compare all models so far. WAIC.
@@ -409,6 +533,38 @@ Let's compare all models so far. WAIC.
 compare_ic(m1.1, m1.2, m1.3, m1.4, m1.5, ic = "waic")
 model_weights(m1.1, m1.2, m1.3, m1.4, m1.5, weights = "waic") %>% round(2)
 ```
+
+```{r echo=F}
+# visualise model comparison
+fig1 <-
+  compare_ic(m1.1, m1.2, m1.3, m1.4, m1.5, ic = "waic")$ic_diffs__ %>%
+  as.matrix() %>% as.tibble() %>%
+  mutate(model = c("Null - Condition",
+                   "Null - Familiarity",
+                   "Null - Condition+Familiarity",
+                   "Null - Condition*Familiarity",
+                   "Condition - Familiarity",
+                   "Condition - Condition+Familiarity",
+                   "Condition - Condition*Familiarity",
+                   "Familiarity - Condition+Familiarity",
+                   "Familiarity - Condition*Familiarity",
+                   "Condition+Familiarity - Condition*Familiarity")) %>%
+  
+  ggplot(aes(x = fct_rev(factor(model, levels = model)), 
+             y = WAIC*-1, 
+             ymin = WAIC*-1 - (SE*1.96), 
+             ymax = WAIC*-1 + (SE*1.96))) +
+  geom_pointrange(size = 0.35) +
+  geom_hline(yintercept = 0, linetype = "dashed") +
+  coord_flip() +
+  xlab(NULL) +
+  ylab("WAIC difference") +
+  theme_classic()
+
+# save for publication
+ggsave(file = "figures/fig1.pdf", fig1, height = 4.5, width = 7)
+```
+
 
 LOO.
 
@@ -450,6 +606,12 @@ load('models/m1.6.rda')
 summary(m1.6)
 ```
 
+What priors did we use?
+
+```{r echo=F}
+prior_summary(m1.6)
+```
+
 Effect of condition?
 
 ```{r}
@@ -469,7 +631,6 @@ Model comparison.
 compare_ic(m1.2, m1.6, ic = "waic")
 compare_ic(m1.2, m1.6, ic = "loo")
 ```
-
 
 ## 1.7. Condition + Presentation model
 
@@ -496,6 +657,12 @@ save(m1.7, file = 'models/m1.7.rda')
 ```{r echo=F}
 load('models/m1.7.rda')
 summary(m1.7)
+```
+
+Priors.
+
+```{r echo=F}
+prior_summary(m1.7)
 ```
 
 The effect of condition persists when controlling for presentation type (video and audio or audio-only).
@@ -547,6 +714,12 @@ load('models/m1.8.rda')
 summary(m1.8)
 ```
 
+Priors.
+
+```{r echo=F}
+prior_summary(m1.8)
+```
+
 The effect of condition persists when controlling for whether the demonstration was live or recorded.
 
 ```{r}
@@ -592,6 +765,12 @@ save(m1.9, file = 'models/m1.9.rda')
 ```{r echo=F}
 load('models/m1.9.rda')
 summary(m1.9)
+```
+
+Priors.
+
+```{r echo=F}
+prior_summary(m1.9)
 ```
 
 The effect of condition persists.
@@ -651,6 +830,12 @@ load('models/m1.10.rda')
 summary(m1.10)
 ```
 
+Priors.
+
+```{r echo=F}
+prior_summary(m1.10)
+```
+
 ```{r}
 post <- posterior_samples(m1.10)
 sum(post$b_condition > 0) / 4000
@@ -672,9 +857,9 @@ compare_ic(m1.2, m1.6, m1.7, m1.8, m1.9, m1.10, ic = "loo")
 ## 1.11. Plot condition parameter with controls
 
 ```{r message=F, warning=F, echo=F}
-fig3 <-
+fig2b <-
   tibble(
-    `Condition`                = (exp(posterior_samples(m1.2)$b_intercept + posterior_samples(m1.2)$b_condition) - exp(posterior_samples(m1.2)$b_intercept))*60,
+    `Condition-only`           = (exp(posterior_samples(m1.2)$b_intercept + posterior_samples(m1.2)$b_condition) - exp(posterior_samples(m1.2)$b_intercept))*60,
     `Condition + Type`         = (exp(posterior_samples(m1.6)$b_intercept + posterior_samples(m1.6)$b_condition) - exp(posterior_samples(m1.2)$b_intercept))*60,
     `Condition + Presentation` = (exp(posterior_samples(m1.7)$b_intercept + posterior_samples(m1.7)$b_condition) - exp(posterior_samples(m1.2)$b_intercept))*60,
     `Condition + Live`         = (exp(posterior_samples(m1.8)$b_intercept + posterior_samples(m1.8)$b_condition) - exp(posterior_samples(m1.2)$b_intercept))*60,
@@ -684,11 +869,11 @@ fig3 <-
   gather(model, samples) %>%
   
   ggplot(aes(x = samples, y = fct_rev(model))) +
-  geom_density_ridges2(fill = "grey90") +
+  geom_density_ridges2(fill = "grey90", scale = 0.8) +
   geom_vline(xintercept = 0, linetype = "dashed") +
-  annotate("text", x = 0.75, y = seq(1.4,6.4,by=1), label = c("94%","95%","95%","96%","96%","95%")) +
-  annotate("text", x = 0.75, y = 7, label = "Prob mass above zero") +
-  xlim(c(-0.25,1.25)) +
+  annotate("text", x = 0.6, y = seq(1.4,6.4,by=1), label = c("0.94","0.95","0.95","0.96","0.96","0.95")) +
+  annotate("text", x = 0.6, y = 7, label = "PPM") +
+  xlim(c(-0.2,0.75)) +
   xlab("Difference in yawning rate (per min) between conditions") +
   coord_cartesian(clip = "off") +
   theme_classic() +
@@ -697,9 +882,12 @@ fig3 <-
         axis.title.y = element_blank(),
         axis.title.x = element_text(margin = margin(t = 10)))
 
-ggsave(fig3, file = "figures/fig3.pdf", width = 8, height = 4.5)
+fig2b
 
-fig3
+# save plot for publication
+fig2 <- plot_grid(fig2a, NULL, fig2b, labels = c('a', '', 'b'), nrow = 1, 
+                  align = 'h', rel_widths = c(1, 0.1, 1.2))
+ggsave(file = "figures/fig2.pdf", fig2, width = 10.1, height = 4.5)
 ```
 
 ## 1.12. Condition*Gender interaction
@@ -729,6 +917,12 @@ save(m1.11, file = 'models/m1.11.rda')
 ```{r echo=F}
 load('models/m1.11.rda')
 summary(m1.11)
+```
+
+Priors.
+
+```{r echo=F}
+prior_summary(m1.11)
 ```
 
 ```{r}
@@ -828,6 +1022,12 @@ load('models/m2.1.rda')
 summary(m2.1)
 ```
 
+Priors.
+
+```{r echo=F}
+prior_summary(m2.1)
+```
+
 ```{r}
 post <- posterior_samples(m2.1)
 
@@ -865,6 +1065,12 @@ save(m2.2, file = 'models/m2.2.rda')
 ```{r echo=F}
 load('models/m2.2.rda')
 summary(m2.2)
+```
+
+Priors.
+
+```{r echo=F}
+prior_summary(m2.2)
 ```
 
 Get difference between conditions.

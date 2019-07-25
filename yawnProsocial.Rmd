@@ -83,6 +83,12 @@ load('models/m3.1.rda')
 summary(m3.1)
 ```
 
+What priors did we use?
+
+```{r echo=F}
+prior_summary(m3.1)
+```
+
 Let's interpret each parameter in turn. The zero-inflation parameter `zi` is -2.58. This is on the logit scale, so we need to calculate the inverse logit.
 
 ```{r}
@@ -138,6 +144,12 @@ load('models/m3.2.rda')
 summary(m3.2)
 ```
 
+What priors did we use?
+
+```{r echo=F}
+prior_summary(m3.2)
+```
+
 The condition parameter has 95% CIs crossing zero, suggesting that there is no difference in yawning rates between conditions. Let's calculate this directly.
 
 ```{r}
@@ -163,7 +175,23 @@ sum(post$b_condition < 0) / 4000
 Let's visualise this lack of a difference on the "yawns per minute" scale.
 
 ```{r echo=F, warning=F, message=F}
-fig4 <-
+fig6_inset <-
+  tibble(
+    diff  = (exp(post$b_intercept) - exp(post$b_intercept + post$b_condition)) * 60
+    ) %>%
+  ggplot(aes(x = diff)) +
+  geom_density(fill = "grey90") +
+  geom_vline(xintercept = 0, linetype = "dashed") +
+  xlab("difference") +
+  xlim(c(-0.25,0.5)) +
+  theme_classic() +
+  theme(axis.line = element_blank(),
+        axis.ticks = element_blank(),
+        axis.text.y = element_blank(),
+        axis.title.y = element_blank(),
+        text = element_text(size = 9))
+
+fig6 <-
   tibble(
     Antisocial = exp(post$b_intercept) * 60,
     Prosocial  = exp(post$b_intercept + post$b_condition) * 60
@@ -179,11 +207,14 @@ fig4 <-
         axis.ticks = element_blank(),
         axis.text.y = element_blank(),
         axis.title.y = element_blank(),
-        axis.title.x = element_text(margin = margin(t = 10)))
+        axis.title.x = element_text(margin = margin(t = 10))) +
+  annotation_custom(ggplotGrob(fig6_inset), xmin = 0.35, xmax = 0.6,
+                    ymin = 3.5, ymax = 8)
 
-ggsave(fig4, file = "figures/fig4.pdf", width = 5, height = 3)
+fig6
 
-fig4
+# save for publication
+ggsave(fig6, file = "figures/fig6.pdf", width = 6, height = 4)
 ```
 
 How does the effect of condition vary across individual dogs?
@@ -220,6 +251,12 @@ load('models/m3.3.rda')
 summary(m3.3)
 ```
 
+Priors.
+
+```{r echo=F}
+prior_summary(m3.3)
+```
+
 ## 1.4. Condition + Trial model
 
 ```{r eval=F, echo=F}
@@ -245,6 +282,12 @@ save(m3.4, file = 'models/m3.4.rda')
 ```{r echo=F}
 load('models/m3.4.rda')
 summary(m3.4)
+```
+
+Priors.
+
+```{r echo=F}
+prior_summary(m3.4)
 ```
 
 ## 1.5. Interaction model
@@ -276,6 +319,12 @@ load('models/m3.5.rda')
 summary(m3.5)
 ```
 
+What priors did we use?
+
+```{r echo=F}
+prior_summary(m3.5)
+```
+
 Are there any differences between cells in the 2x2 design?
 
 ```{r}
@@ -296,7 +345,6 @@ sum(anti2rate - pro2rate < 0) / 4000
 sum(pro1rate - pro2rate < 0) / 4000
 ```
 
-
 ## 1.6. Compare models
 
 WAIC.
@@ -304,6 +352,37 @@ WAIC.
 ```{r}
 compare_ic(m3.1, m3.2, m3.3, m3.4, m3.5, ic = "waic")
 model_weights(m3.1, m3.2, m3.3, m3.4, m3.5, weights = "waic") %>% round(3)
+```
+
+```{r echo=F}
+# visualise model comparison
+fig5 <-
+  compare_ic(m3.1, m3.2, m3.3, m3.4, m3.5, ic = "waic")$ic_diffs__ %>%
+  as.matrix() %>% as.tibble() %>%
+  mutate(model = c("Null - Prosocial",
+                   "Null - Trial",
+                   "Null - Prosocial+Trial",
+                   "Null - Prosocial*Trial",
+                   "Prosocial - Trial",
+                   "Prosocial - Prosocial+Trial",
+                   "Prosocial - Prosocial*Trial",
+                   "Trial - Prosocial+Trial",
+                   "Trial - Prosocial*Trial",
+                   "Prosocial+Trial - Prosocial*Trial")) %>%
+  
+  ggplot(aes(x = fct_rev(factor(model, levels = model)), 
+             y = WAIC*-1, 
+             ymin = WAIC*-1 - (SE*1.96), 
+             ymax = WAIC*-1 + (SE*1.96))) +
+  geom_pointrange(size = 0.35) +
+  geom_hline(yintercept = 0, linetype = "dashed") +
+  coord_flip() +
+  xlab(NULL) +
+  ylab("WAIC difference") +
+  theme_classic()
+
+# save for publication
+ggsave(file = "figures/fig5.pdf", fig5, height = 4.5, width = 7)
 ```
 
 LOO.
@@ -333,6 +412,12 @@ save(m4.1, file = 'models/m4.1.rda')
 ```{r echo=F}
 load('models/m4.1.rda')
 summary(m4.1)
+```
+
+What priors did we use?
+
+```{r echo=F}
+prior_summary(m4.1)
 ```
 
 Calculate the average yawning rate.
@@ -375,6 +460,12 @@ save(m4.2, file = 'models/m4.2.rda')
 ```{r echo=F}
 load('models/m4.2.rda')
 summary(m4.2)
+```
+
+What priors did we use?
+
+```{r echo=F}
+prior_summary(m4.2)
 ```
 
 Difference between conditions?
@@ -450,6 +541,12 @@ load('models/m4.3.rda')
 summary(m4.3)
 ```
 
+Priors.
+
+```{r echo=F}
+prior_summary(m4.3)
+```
+
 ## 2.4. Condition + Trial model
 
 ```{r eval=F, echo=F}
@@ -470,6 +567,12 @@ save(m4.4, file = 'models/m4.4.rda')
 ```{r echo=F}
 load('models/m4.4.rda')
 summary(m4.4)
+```
+
+Priors.
+
+```{r echo=F}
+prior_summary(m4.4)
 ```
 
 ## 2.5. Interaction model
@@ -493,6 +596,12 @@ save(m4.5, file = 'models/m4.5.rda')
 ```{r echo=F}
 load('models/m4.5.rda')
 summary(m4.5)
+```
+
+What priors did we use?
+
+```{r echo=F}
+prior_summary(m4.5)
 ```
 
 ## 2.6. Compare models
