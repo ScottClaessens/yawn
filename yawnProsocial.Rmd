@@ -215,6 +215,7 @@ fig6
 
 # save for publication
 ggsave(fig6, file = "figures/fig6.pdf", width = 6, height = 4)
+ggsave(fig6, file = "figures/fig6.jpg", width = 6, height = 4)
 ```
 
 How does the effect of condition vary across individual dogs?
@@ -358,17 +359,11 @@ model_weights(m3.1, m3.2, m3.3, m3.4, m3.5, weights = "waic") %>% round(3)
 # visualise model comparison
 fig5 <-
   compare_ic(m3.1, m3.2, m3.3, m3.4, m3.5, ic = "waic")$ic_diffs__ %>%
-  as.matrix() %>% as.tibble() %>%
-  mutate(model = c("Null - Prosocial",
-                   "Null - Trial",
-                   "Null - Prosocial+Trial",
-                   "Null - Prosocial*Trial",
-                   "Prosocial - Trial",
-                   "Prosocial - Prosocial+Trial",
-                   "Prosocial - Prosocial*Trial",
-                   "Trial - Prosocial+Trial",
-                   "Trial - Prosocial*Trial",
-                   "Prosocial+Trial - Prosocial*Trial")) %>%
+  as.matrix() %>% as.tibble() %>% slice(1:4) %>%
+  mutate(model = c("Prosocial",
+                   "Trial",
+                   "Prosocial+Trial",
+                   "Prosocial*Trial")) %>%
   
   ggplot(aes(x = fct_rev(factor(model, levels = model)), 
              y = WAIC*-1, 
@@ -378,11 +373,13 @@ fig5 <-
   geom_hline(yintercept = 0, linetype = "dashed") +
   coord_flip() +
   xlab(NULL) +
-  ylab("WAIC difference") +
+  ylim(-12,12) +
+  ylab("WAIC difference from null model") +
   theme_classic()
 
 # save for publication
-ggsave(file = "figures/fig5.pdf", fig5, height = 4.5, width = 7)
+ggsave(file = "figures/fig5.pdf", fig5, height = 2.5, width = 6)
+ggsave(file = "figures/fig5.jpg", fig5, height = 2.5, width = 6)
 ```
 
 LOO.
