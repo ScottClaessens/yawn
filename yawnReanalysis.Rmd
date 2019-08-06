@@ -135,7 +135,7 @@ The median probability of the yawning process getting started is 0.65.
 Let's calculate the average yawning rate once the yawning process gets started.
 
 ```{r}
-(exp(post$b_Intercept) * 60) %>% # yawns per minute
+(exp(post$b_Intercept) * 60) %>% # Yawning rate (per min)
   median() %>%
   round(2)
 ```
@@ -202,7 +202,7 @@ Bayes factor for condition parameter.
 Visualise effect of condition.
 
 ```{r warning=F, message=F,echo=F}
-fig2_inset <-
+fig1a_inset <-
   tibble(
     diff  = (exp(post$b_intercept + post$b_condition) - 
                exp(post$b_intercept)) * 60
@@ -219,7 +219,7 @@ fig2_inset <-
         axis.title.y = element_blank(),
         text = element_text(size = 9))
 
-fig2 <-
+fig1a <-
   tibble(
     Control  = exp(post$b_intercept) * 60,
     Yawning  = exp(post$b_intercept + post$b_condition) * 60
@@ -227,7 +227,7 @@ fig2 <-
   gather(Condition, yawns) %>%
   ggplot(aes(x = yawns, fill = Condition, colour = Condition)) +
   geom_density(alpha = 0.1) +
-  xlab("Yawns per minute") +
+  xlab("Yawning rate (per min)") +
   xlim(c(0,0.6)) +
   theme_classic() +
   theme(axis.line = element_blank(),
@@ -235,14 +235,10 @@ fig2 <-
         axis.text.y = element_blank(),
         axis.title.y = element_blank(),
         axis.title.x = element_text(margin = margin(t = 10))) +
-  annotation_custom(ggplotGrob(fig2_inset), xmin = 0.3, xmax = 0.55,
+  annotation_custom(ggplotGrob(fig1a_inset), xmin = 0.3, xmax = 0.55,
                     ymin = 7, ymax = 17)
 
-fig2
-
-# save for publication
-ggsave(file = "figures/fig2.pdf", fig2, width = 6, height = 4)
-ggsave(file = "figures/fig2.jpg", fig2, width = 6, height = 4)
+fig1a
 ```
 
 The effect of condition across studies.
@@ -255,9 +251,8 @@ ggsave(file = "figures/figS1.pdf", figS1, height = 5, width = 6)
 ggsave(file = "figures/figS1.jpg", figS1, height = 5, width = 6)
 ```
 
-
 ```{r echo=F, message=F, warning=F}
-fig3a <-
+fig1b <-
   tibble(
     `Average`    = (exp(post$b_intercept + post$b_condition) - exp(post$b_intercept)) * 60,
     `BT et al.`  = (exp(post$b_intercept + post$`r_study[BT.et.al,intercept]` + post$b_condition + post$`r_study[BT.et.al,condition]`) - exp(post$b_intercept + post$`r_study[BT.et.al,intercept]`)) * 60,
@@ -275,7 +270,7 @@ fig3a <-
   annotate("text", x = 0.6, y = seq(1.4,7.4,by=1), label = c("0.95","0.49","0.99","0.99","0.99","0.98","0.98")) +
   annotate("text", x = 0.6, y = 8, label = "PPM") +
   xlim(c(-0.2,0.75)) +
-  xlab("Difference in yawning rate (per min) between conditions") +
+  xlab("Difference in yawning rate (per min)\nbetween conditions") +
   coord_cartesian(clip = "off") +
   theme_classic() +
   theme(axis.line = element_blank(),
@@ -283,7 +278,7 @@ fig3a <-
         axis.title.y = element_blank(),
         axis.title.x = element_text(margin = margin(t = 10)))
 
-fig3a
+fig1b
 ```
 
 BT et al. is the only study where the parameter crosses zero, and is also the largest study and the only one done entirely with shelter dogs. We should control for this later.
@@ -320,6 +315,7 @@ What priors did we use?
 ```{r echo=F}
 prior_summary(m1.3)
 ```
+
 ## 1.4. Condition + Familiarity model
 
 We include both condition and familiarity as additive effects.
@@ -461,7 +457,7 @@ sum(diff3 - diff6 > 0) / 4000
 Visualise.
 
 ```{r warning=F, message=F, echo=F}
-fig4_insetUnfamiliar <-
+fig2a_insetUnfamiliar <-
   tibble(
     diff  = (exp(post$b_intercept + post$b_condition) - exp(post$b_intercept)) * 60
     ) %>%
@@ -477,7 +473,7 @@ fig4_insetUnfamiliar <-
         axis.title.y = element_blank(),
         text = element_text(size = 9))
 
-fig4_insetFamiliar <-
+fig2a_insetFamiliar <-
   tibble(
     diff  = (exp(post$b_intercept + post$b_familiar + post$b_condition + post$`b_condition:familiar`) 
              - exp(post$b_intercept + post$b_familiar)) * 60
@@ -504,7 +500,7 @@ annotation_custom2 <- function (grob, xmin = -Inf, xmax = Inf, ymin = -Inf, ymax
                                             ymin = ymin, ymax = ymax))
   }
 
-fig4 <-
+fig2a <-
   tibble(
     ControlUnfamiliar  = exp(post$b_intercept) * 60,
     YawningUnfamiliar  = exp(post$b_intercept + post$b_condition) * 60,
@@ -518,7 +514,7 @@ fig4 <-
   
   ggplot(aes(x = yawns, fill = Condition, colour = Condition)) +
   geom_density(alpha = 0.1) +
-  xlab("Yawns per minute") +
+  xlab("Yawning rate (per min)") +
   xlim(c(0,0.6)) +
   facet_wrap(.~fct_rev(Familiarity)) +
   theme_classic() +
@@ -527,18 +523,14 @@ fig4 <-
         axis.text.y = element_blank(),
         axis.title.y = element_blank(),
         axis.title.x = element_text(margin = margin(t = 10))) +
-  annotation_custom2(ggplotGrob(fig4_insetFamiliar), 
+  annotation_custom2(ggplotGrob(fig2a_insetFamiliar), 
                      data=data.frame(Familiarity="Familiar", Condition = NA, yawns = 1),
                      xmin=0.25, xmax=0.6, ymin=10, ymax=18) +
-  annotation_custom2(ggplotGrob(fig4_insetUnfamiliar), 
+  annotation_custom2(ggplotGrob(fig2a_insetUnfamiliar), 
                      data=data.frame(Familiarity="Unfamiliar", Condition = NA, yawns = 1),
                      xmin=0.25, xmax=0.6, ymin=10, ymax=18)
 
-fig4
-
-# save for publication
-ggsave(fig4, file = "figures/fig4.pdf", width = 6, height = 4)
-ggsave(fig4, file = "figures/fig4.jpg", width = 6, height = 4)
+fig2a
 ```
 
 Let's compare all models so far. WAIC.
@@ -550,7 +542,7 @@ model_weights(m1.1, m1.2, m1.3, m1.4, m1.5, weights = "waic") %>% round(2)
 
 ```{r echo=F}
 # visualise model comparison
-waicFig1 <-
+waicFig2 <-
   compare_ic(m1.1, m1.2, m1.3, m1.4, m1.5, ic = "waic")$ic_diffs__ %>%
   as.matrix() %>% as_tibble() %>% slice(1:7) %>%
   mutate(model = c("Condition",
@@ -560,8 +552,8 @@ waicFig1 <-
                    "Familiarity",
                    "Condition+Familiarity",
                    "Condition*Familiarity"))
-fig1a <-
-  waicFig1 %>% slice(1:4) %>%
+fig2b <-
+  waicFig2 %>% slice(1:4) %>%
   ggplot(aes(x = fct_rev(factor(model, levels = model)), 
              y = WAIC*-1, 
              ymin = WAIC*-1 - (SE*1.96), 
@@ -574,8 +566,8 @@ fig1a <-
   ylab("WAIC difference from null model") +
   theme_classic()
 
-fig1b <-
-  waicFig1 %>% slice(5:7) %>%
+fig2c <-
+  waicFig2 %>% slice(5:7) %>%
   ggplot(aes(x = fct_rev(factor(model, levels = model)), 
              y = WAIC*-1, 
              ymin = WAIC*-1 - (SE*1.96), 
@@ -589,10 +581,13 @@ fig1b <-
   theme_classic()
 
 # save for publication
-fig1 <- plot_grid(fig1a, NULL, fig1b, ncol = 1, align = 'v', 
-                  labels = c("a", "", "b"), rel_heights = c(1, 0.05, 0.82))
-ggsave(file = "figures/fig1.pdf", fig1, height = 4.5, width = 6)
-ggsave(file = "figures/fig1.jpg", fig1, height = 4.5, width = 6)
+fig2_first_row  <- plot_grid(NULL, fig2a, nrow = 1, labels = c("a",""), rel_widths = c(0.02, 1))
+fig2_second_row <- plot_grid(fig2b, NULL, fig2c, nrow = 1, align = 'h', 
+                             labels = c("b", "", "c"), rel_widths = c(1, 0.05, 1))
+fig2 <- plot_grid(fig2_first_row, NULL, fig2_second_row, labels = c("",""), ncol=1,
+                  rel_heights = c(1, 0.05, 0.5))
+ggsave(file = "figures/fig2.pdf", fig2, height = 7, width = 8)
+ggsave(file = "figures/fig2.jpg", fig2, height = 7, width = 8)
 ```
 
 LOO.
@@ -822,7 +817,7 @@ compare_ic(m1.2, m1.9, ic = "waic")
 compare_ic(m1.2, m1.9, ic = "loo")
 ```
 
-## 1.10. Full model
+## 1.10. Full model (all controls)
 
 ```{r echo=F, eval=F}
 m1.10 <- brm(data = d, family = zero_inflated_poisson,
@@ -913,10 +908,10 @@ ggsave(file = "figures/figS2.pdf", figS2, height = 3, width = 6)
 ggsave(file = "figures/figS2.jpg", figS2, height = 3, width = 6)
 ```
 
-## 1.11. Plot condition parameter with controls
+Plot condition parameter with controls.
 
 ```{r message=F, warning=F, echo=F}
-fig3b <-
+fig1c <-
   tibble(
     `Condition-only`           = (exp(posterior_samples(m1.2)$b_intercept + posterior_samples(m1.2)$b_condition) - exp(posterior_samples(m1.2)$b_intercept))*60,
     `Condition + Type`         = (exp(posterior_samples(m1.6)$b_intercept + posterior_samples(m1.6)$b_condition) - exp(posterior_samples(m1.2)$b_intercept))*60,
@@ -926,6 +921,12 @@ fig3b <-
     `Full model`               = (exp(posterior_samples(m1.10)$b_intercept + posterior_samples(m1.10)$b_condition) - exp(posterior_samples(m1.10)$b_intercept))*60
   ) %>%
   gather(model, samples) %>%
+  mutate(model = factor(model, levels = c("Condition-only",
+                                          "Condition + Type",
+                                          "Condition + Presentation",
+                                          "Condition + Live",
+                                          "Condition + Demonstrator",
+                                          "Full model"))) %>%
   
   ggplot(aes(x = samples, y = fct_rev(model))) +
   geom_density_ridges2(fill = "grey90", scale = 0.8) +
@@ -933,7 +934,7 @@ fig3b <-
   annotate("text", x = 0.6, y = seq(1.4,6.4,by=1), label = c("0.94","0.95","0.95","0.96","0.96","0.95")) +
   annotate("text", x = 0.6, y = 7, label = "PPM") +
   xlim(c(-0.2,0.75)) +
-  xlab("Difference in yawning rate (per min) between conditions") +
+  xlab("Difference in yawning rate (per min)\nbetween conditions") +
   coord_cartesian(clip = "off") +
   theme_classic() +
   theme(axis.line = element_blank(),
@@ -941,31 +942,30 @@ fig3b <-
         axis.title.y = element_blank(),
         axis.title.x = element_text(margin = margin(t = 10)))
 
-fig3b
+fig1c
 
 # save plot for publication
-fig3 <- plot_grid(fig3a, NULL, fig3b, nrow = 1, labels = c("a", "", "b"),
-                  align = 'h', rel_widths = c(1, 0.1, 1.2))
-ggsave(file = "figures/fig3.pdf", fig3, width = 10.1, height = 4.5)
-ggsave(file = "figures/fig3.jpg", fig3, width = 10.1, height = 4.5)
+fig1_first_row  <- plot_grid(fig1a, labels = c("a"))
+fig1_second_row <- plot_grid(fig1b, NULL, fig1c, nrow = 1, labels = c("b", "", "c"),
+                             align = 'h', rel_widths = c(1, 0.1, 1.2))
+fig1 <- plot_grid(fig1_first_row, NULL, fig1_second_row, ncol = 1,
+                  align = 'v', rel_heights = c(1, 0.1, 1))
+ggsave(file = "figures/fig1.pdf", fig1, width = 7.5, height = 7)
+ggsave(file = "figures/fig1.jpg", fig1, width = 7.5, height = 7)
 ```
 
-## 1.12. Condition*Gender interaction
+## 1.11. Gender-only model
 
 ```{r echo=F, eval=F}
 m1.11 <- brm(data = d, family = zero_inflated_poisson,
-             bf(numberYawns ~ 0 + intercept + condition*male + offset(log(secs)) + 
-                  (0 + intercept + condition*male | study/ID),
-                zi ~ 0 + intercept + condition*male + 
-                  (0 + intercept + condition*male | study/ID)),
+             bf(numberYawns ~ 0 + intercept + male + offset(log(secs)) + 
+                  (0 + intercept + male | study/ID),
+                zi ~ 0 + intercept + male + 
+                  (0 + intercept + male | study/ID)),
              prior = c(prior(student_t(3, -2, 10), class = b, coef = "intercept"),
-                       prior(normal(0, 1), class = b, coef = "condition"),
                        prior(normal(0, 1), class = b, coef = "male"),
-                       prior(normal(0, 1), class = b, coef = "condition:male"),
                        prior(logistic(0, 1), class = b, coef = "intercept", dpar = zi),
-                       prior(normal(0, 1), class = b, coef = "condition", dpar = zi),
-                       prior(normal(0, 1), class = b, coef = "male", dpar = zi),
-                       prior(normal(0, 1), class = b, coef = "condition:male", dpar = zi)),
+                       prior(normal(0, 1), class = b, coef = "male", dpar = zi)),
              iter = 2000, warmup = 1000, chains = 4, cores = 4,
              control = list(adapt_delta = 0.999, max_treedepth = 15))
 
@@ -985,8 +985,100 @@ Priors.
 prior_summary(m1.11)
 ```
 
+## 1.12. Condition + Gender model
+
+```{r echo=F, eval=F}
+m1.12 <- brm(data = d, family = zero_inflated_poisson,
+             bf(numberYawns ~ 0 + intercept + condition + male + offset(log(secs)) + 
+                  (0 + intercept + condition + male | study/ID),
+                zi ~ 0 + intercept + condition + male + 
+                  (0 + intercept + condition + male | study/ID)),
+             prior = c(prior(student_t(3, -2, 10), class = b, coef = "intercept"),
+                       prior(normal(0, 1), class = b, coef = "condition"),
+                       prior(normal(0, 1), class = b, coef = "male"),
+                       prior(logistic(0, 1), class = b, coef = "intercept", dpar = zi),
+                       prior(normal(0, 1), class = b, coef = "condition", dpar = zi),
+                       prior(normal(0, 1), class = b, coef = "male", dpar = zi)),
+             iter = 2000, warmup = 1000, chains = 4, cores = 4,
+             control = list(adapt_delta = 0.999, max_treedepth = 15))
+
+m1.12 <- add_ic(m1.12, ic = c("loo","waic"))
+
+save(m1.12, file = 'models/m1.12.rda')
+```
+
+```{r echo=F}
+load('models/m1.12.rda')
+summary(m1.12)
+```
+
+Priors.
+
+```{r echo=F}
+prior_summary(m1.12)
+```
+
+Get difference between conditions, controlling for gender.
+
 ```{r}
-post <- posterior_samples(m1.11)
+post <- posterior_samples(m1.12)
+
+# yawning rates (per minute)
+cond1 <- exp(post$b_intercept) * 60
+median(cond1)
+
+cond2 <- exp(post$b_intercept + post$b_condition) * 60
+median(cond2)
+
+diff <- cond2 - cond1
+
+# proportion of prob mass above zero
+sum(diff > 0) / 4000
+```
+
+Bayes factor for condition parameter.
+
+```{r}
+(hyp1.12 <- hypothesis(m1.12, "condition > 0"))
+```
+
+## 1.13. Condition*Gender model
+
+```{r echo=F, eval=F}
+m1.13 <- brm(data = d, family = zero_inflated_poisson,
+             bf(numberYawns ~ 0 + intercept + condition*male + offset(log(secs)) + 
+                  (0 + intercept + condition*male | study/ID),
+                zi ~ 0 + intercept + condition*male + 
+                  (0 + intercept + condition*male | study/ID)),
+             prior = c(prior(student_t(3, -2, 10), class = b, coef = "intercept"),
+                       prior(normal(0, 1), class = b, coef = "condition"),
+                       prior(normal(0, 1), class = b, coef = "male"),
+                       prior(normal(0, 1), class = b, coef = "condition:male"),
+                       prior(logistic(0, 1), class = b, coef = "intercept", dpar = zi),
+                       prior(normal(0, 1), class = b, coef = "condition", dpar = zi),
+                       prior(normal(0, 1), class = b, coef = "male", dpar = zi),
+                       prior(normal(0, 1), class = b, coef = "condition:male", dpar = zi)),
+             iter = 2000, warmup = 1000, chains = 4, cores = 4,
+             control = list(adapt_delta = 0.999, max_treedepth = 15))
+
+m1.13 <- add_ic(m1.13, ic = c("loo","waic"))
+
+save(m1.13, file = 'models/m1.13.rda')
+```
+
+```{r echo=F}
+load('models/m1.13.rda')
+summary(m1.13)
+```
+
+Priors.
+
+```{r echo=F}
+prior_summary(m1.13)
+```
+
+```{r}
+post <- posterior_samples(m1.13)
 
 # yawning rates (per minute)
 cond1f <- exp(post$b_intercept) * 60
@@ -1019,7 +1111,7 @@ sum(diff5 > 0) / 4000
 sum(diff6 > 0) / 4000
 ```
 
-Does the effect of condition differ between familiar and unfamiliar demonstrators? Interaction effect.
+Does the effect of condition differ between males and females? Interaction effect.
 
 ```{r}
 sum(diff3 - diff6 > 0) / 4000
@@ -1028,37 +1120,145 @@ sum(diff3 - diff6 > 0) / 4000
 Visualise.
 
 ```{r warning=F, message=F, echo=F}
+fig3a_insetFemale <-
   tibble(
-    ControlUnfamiliar  = exp(post$b_intercept) * 60,
-    YawningUnfamiliar  = exp(post$b_intercept + post$b_condition) * 60,
-    ControlFamiliar    = exp(post$b_intercept + post$b_male) * 60,
-    YawningFamiliar    = exp(post$b_intercept + post$b_condition 
-                             + post$b_male + post$`b_condition:male`) * 60
+    diff  = (exp(post$b_intercept + post$b_condition) - exp(post$b_intercept)) * 60
     ) %>%
-  gather(cell, yawns) %>%
-  mutate(Condition   = rep(rep(c("Control", "Yawning"), each = 4000), times = 2),
-         Gender      = rep(c("Female", "Male"), each = 8000)) %>%
-  
-  ggplot(aes(x = yawns, fill = Condition, colour = Condition)) +
-  geom_density(alpha = 0.1) +
-  xlab("Yawns per minute") +
-  xlim(c(0,0.6)) +
-  facet_wrap(.~Gender) +
+  ggplot(aes(x = diff)) +
+  geom_density(fill = "grey90") +
+  geom_vline(xintercept = 0, linetype = "dashed") +
+  xlab("difference") +
+  xlim(c(-0.25,0.5)) +
   theme_classic() +
   theme(axis.line = element_blank(),
         axis.ticks = element_blank(),
         axis.text.y = element_blank(),
         axis.title.y = element_blank(),
-        axis.title.x = element_text(margin = margin(t = 10)))
+        text = element_text(size = 9))
+
+fig3a_insetMale <-
+  tibble(
+    diff  = (exp(post$b_intercept + post$b_male + post$b_condition + post$`b_condition:male`) 
+             - exp(post$b_intercept + post$b_male)) * 60
+    ) %>%
+  ggplot(aes(x = diff)) +
+  geom_density(fill = "grey90") +
+  geom_vline(xintercept = 0, linetype = "dashed") +
+  xlab("difference") +
+  xlim(c(-0.25,0.5)) +
+  theme_classic() +
+  theme(axis.line = element_blank(),
+        axis.ticks = element_blank(),
+        axis.text.y = element_blank(),
+        axis.title.y = element_blank(),
+        text = element_text(size = 9))
+
+# custom function for inset plots inside facetted plots
+annotation_custom2 <- function (grob, xmin = -Inf, xmax = Inf, ymin = -Inf, ymax = Inf, data) 
+  {
+    layer(data = data, stat = StatIdentity, position = PositionIdentity, 
+          geom = ggplot2:::GeomCustomAnn,
+          inherit.aes = TRUE, params = list(grob = grob, 
+                                            xmin = xmin, xmax = xmax, 
+                                            ymin = ymin, ymax = ymax))
+  }
+
+fig3a <-
+  tibble(
+    ControlFemale  = exp(post$b_intercept) * 60,
+    YawningFemale  = exp(post$b_intercept + post$b_condition) * 60,
+    ControlMale    = exp(post$b_intercept + post$b_male) * 60,
+    YawningMale    = exp(post$b_intercept + post$b_condition 
+                             + post$b_male + post$`b_condition:male`) * 60
+    ) %>%
+  gather(cell, yawns) %>%
+  mutate(Condition   = rep(rep(c("Control", "Yawning"), each = 4000), times = 2),
+         Sex         = rep(c("Female", "Male"), each = 8000)) %>%
+  
+  ggplot(aes(x = yawns, fill = Condition, colour = Condition)) +
+  geom_density(alpha = 0.1) +
+  xlab("Yawning rate (per min)") +
+  xlim(c(0,0.6)) +
+  facet_wrap(.~fct_rev(Sex)) +
+  theme_classic() +
+  theme(axis.line = element_blank(),
+        axis.ticks = element_blank(),
+        axis.text.y = element_blank(),
+        axis.title.y = element_blank(),
+        axis.title.x = element_text(margin = margin(t = 10))) +
+  annotation_custom2(ggplotGrob(fig3a_insetMale), 
+                     data=data.frame(Sex="Male", Condition = NA, yawns = 1),
+                     xmin=0.25, xmax=0.6, ymin=8, ymax=14.2) +
+  annotation_custom2(ggplotGrob(fig3a_insetFemale), 
+                     data=data.frame(Sex="Female", Condition = NA, yawns = 1),
+                     xmin=0.25, xmax=0.6, ymin=8, ymax=14.2)
+
+fig3a
 ```
 
-Model comparison.
+Let's compare all the condition/gender models. WAIC.
 
 ```{r}
-compare_ic(m1.2, m1.11)
+compare_ic(m1.1, m1.2, m1.11, m1.12, m1.13, ic = "waic")
+model_weights(m1.1, m1.2, m1.11, m1.12, m1.13, weights = "waic") %>% round(2)
 ```
 
-This interaction model is worse than its condition-only counterpart.
+```{r echo=F}
+# visualise model comparison
+waicFig3 <-
+  compare_ic(m1.1, m1.2, m1.11, m1.12, m1.13, ic = "waic")$ic_diffs__ %>%
+  as.matrix() %>% as_tibble() %>% slice(1:7) %>%
+  mutate(model = c("Condition",
+                   "Gender",
+                   "Condition+Gender",
+                   "Condition*Gender",
+                   "Gender",
+                   "Condition+Gender",
+                   "Condition*Gender"))
+fig3b <-
+  waicFig3 %>% slice(1:4) %>%
+  ggplot(aes(x = fct_rev(factor(model, levels = model)), 
+             y = WAIC*-1, 
+             ymin = WAIC*-1 - (SE*1.96), 
+             ymax = WAIC*-1 + (SE*1.96))) +
+  geom_pointrange(size = 0.35) +
+  geom_hline(yintercept = 0, linetype = "dashed") +
+  coord_flip() +
+  xlab(NULL) +
+  ylim(-120,120) +
+  ylab("WAIC difference from null model") +
+  theme_classic()
+
+fig3c <-
+  waicFig3 %>% slice(5:7) %>%
+  ggplot(aes(x = fct_rev(factor(model, levels = model)), 
+             y = WAIC*-1, 
+             ymin = WAIC*-1 - (SE*1.96), 
+             ymax = WAIC*-1 + (SE*1.96))) +
+  geom_pointrange(size = 0.35) +
+  geom_hline(yintercept = 0, linetype = "dashed") +
+  coord_flip() +
+  xlab(NULL) +
+  ylim(-120,120) +
+  ylab("WAIC difference from Condition model") +
+  theme_classic()
+
+# save for publication
+fig3_first_row  <- plot_grid(NULL, fig3a, nrow = 1, labels = c("a",""), rel_widths = c(0.02, 1))
+fig3_second_row <- plot_grid(fig3b, NULL, fig3c, nrow = 1, align = 'h', 
+                             labels = c("b", "", "c"), rel_widths = c(1, 0.05, 1))
+fig3 <- plot_grid(fig3_first_row, NULL, fig3_second_row, labels = c("",""), ncol=1,
+                  rel_heights = c(1, 0.05, 0.5))
+ggsave(file = "figures/fig3.pdf", fig3, height = 7, width = 8)
+ggsave(file = "figures/fig3.jpg", fig3, height = 7, width = 8)
+```
+
+LOO.
+
+```{r}
+compare_ic(m1.1, m1.2, m1.11, m1.12, m1.13, ic = "loo")
+model_weights(m1.1, m1.2, m1.11, m1.12, m1.13, weights = "loo") %>% round(2)
+```
 
 # 2. Fit Poisson models
 
@@ -1091,7 +1291,7 @@ prior_summary(m2.1)
 ```{r}
 post <- posterior_samples(m2.1)
 
-(exp(post$b_Intercept) * 60) %>% # yawns per minute
+(exp(post$b_Intercept) * 60) %>% # Yawning rate (per min)
   median() %>%
   round(2)
 ```
