@@ -1,5 +1,5 @@
 ---
-title: "Contagious Yawning in Dogs: Prosocial Experiment Analysis"
+title: "Contagious Yawning in Dogs: Prosocial Experiment Analysis (Part 1)"
 author: Scott Claessens and Patrick Neilands
 date: "`r format(Sys.Date())`"
 output:
@@ -57,7 +57,7 @@ d %>%
   facet_wrap(.~condition)
 ```
 
-We will initially treat this as zero-inflated Poisson data; however, this specific dataset does not look too zero-inflated. Later, we will re-run models with just a Poisson distribution and see if our results are robust to this assumption.
+We will initially treat this as zero-inflated Poisson data; however, this specific dataset does not look too zero-inflated. Later, we will re-run models with other distributions and see if our results are robust to this assumption.
 
 # 1. Fit zero-inflated Poisson models
 
@@ -69,12 +69,15 @@ Fit an intercept-only model.
 
 ```{r eval=F, echo=F}
 m3.1 <- brm(data = d, family = zero_inflated_poisson,
-            bf(numberYawns ~ 1 + offset(log(secs)) + (1 | ID),
-               zi ~ 1 + (1 | ID)),
+            bf(numberYawns ~ 0 + intercept + offset(log(secs)) + (0 + intercept | ID),
+               zi ~ 0 + intercept + (0 + intercept | ID)),
+            prior = c(prior(student_t(3, -2, 10), class = b, coef = "intercept"),
+                      prior(logistic(0, 1), class = b, coef = "intercept", dpar = zi),
+                      prior(student_t(3, 0, 0.5), class = sd, dpar = zi)),
             iter = 2000, warmup = 1000, chains = 4, cores = 4,
             control = list(adapt_delta = 0.999))
 
-m3.1 <- add_ic(m3.1, ic = c("loo","waic"))
+m3.1 <- add_criterion(m3.1, c("loo","waic"))
 
 save(m3.1, file = 'models/m3.1.rda')
 ```
@@ -90,33 +93,38 @@ What priors did we use?
 prior_summary(m3.1)
 ```
 
-Let's interpret each parameter in turn. The zero-inflation parameter `zi` is -2.58. This is on the logit scale, so we need to calculate the inverse logit.
+Let's interpret each parameter in turn. The zero-inflation parameter `zi` is -2.33. This is on the logit scale, so we need to calculate the inverse logit.
 
 ```{r}
 post <- posterior_samples(m3.1)
 
-1 - inv_logit_scaled(post$b_zi_Intercept) %>% # prob of yawning process getting started
+1 - inv_logit_scaled(post$b_zi_intercept) %>% # prob of yawning process getting started
   median() %>%
   round(2)
 ```
 
-The median probability of the yawning process getting started is 0.91. This is quite probable, meaning we may be justified in switching to a non-zero-inflated Poisson process. We'll do this later.
+The median probability of the yawning process getting started is 0.89. This is quite probable, meaning we may be justified in switching to a non-zero-inflated Poisson process. We'll do this later.
 
 Let's calculate the average yawning rate once the yawning process gets started.
 
 ```{r}
-(exp(post$b_Intercept) * 60) %>% # Yawning rate (per min)
+(exp(post$b_intercept) * 60) %>% # Yawning rate (per min)
   median() %>%
   round(2)
 ```
 
-The dogs yawn 0.21 times a minute, on average. Let's split this by ID.
+The dogs yawn 0.19 times a minute, on average. Let's split this by ID.
 
 ```{r warning=F, message=F, echo=F}
-brmstools::forest(m3.1, pars = 'Intercept', grouping = 'ID')
+brmstools::forest(m3.1, pars = 'intercept', grouping = 'ID')
 ```
 
 Remember, this is on the log scale. But it seems like there isn't much variation in yawning rates across dogs.
+
+```{r echo=F}
+# cleanup
+rm(post)
+```
 
 ## 1.2. Condition-only model
 
@@ -131,11 +139,12 @@ m3.2 <- brm(data = d, family = zero_inflated_poisson,
             prior = c(prior(student_t(3, -2, 10), class = b, coef = "intercept"),
                       prior(normal(0, 1), class = b, coef = "condition"),
                       prior(logistic(0, 1), class = b, coef = "intercept", dpar = zi),
-                      prior(normal(0, 1), class = b, coef = "condition", dpar = zi)),
+                      prior(normal(0, 1), class = b, coef = "condition", dpar = zi),
+                      prior(student_t(3, 0, 0.5), class = sd, dpar = zi)),
             iter = 2000, warmup = 1000, chains = 4, cores = 4,
             control = list(adapt_delta = 0.999))
 
-m3.2 <- add_ic(m3.2, ic = c("loo","waic"))
+m3.2 <- add_criterion(m3.2, c("loo","waic"))
 
 save(m3.2, file = 'models/m3.2.rda')
 ```
@@ -170,13 +179,13 @@ post <- posterior_samples(m3.2)
 Psoterior probability mass shows that the difference between these is not substantial.
 
 ```{r}
-sum(post$b_condition < 0) / 4000
+(sum(post$b_condition < 0) / length(post$b_condition)) %>% round(2)
 ```
 
 Let's visualise this lack of a difference on the "Yawning rate (per min)" scale.
 
 ```{r echo=F, warning=F, message=F}
-fig4a_inset <-
+inset <-
   tibble(
     diff  = (exp(post$b_intercept) - exp(post$b_intercept + post$b_condition)) * 60
     ) %>%
@@ -192,11 +201,10 @@ fig4a_inset <-
         axis.title.y = element_blank(),
         text = element_text(size = 9))
 
-fig4a <-
-  tibble(
-    Antisocial = exp(post$b_intercept) * 60,
-    Prosocial  = exp(post$b_intercept + post$b_condition) * 60
-    ) %>%
+tibble(
+  Antisocial = exp(post$b_intercept) * 60,
+  Prosocial  = exp(post$b_intercept + post$b_condition) * 60
+  ) %>%
   gather(Condition, yawns) %>%
   
   ggplot(aes(x = yawns, fill = Condition, colour = Condition)) +
@@ -208,11 +216,10 @@ fig4a <-
         axis.ticks = element_blank(),
         axis.text.y = element_blank(),
         axis.title.y = element_blank(),
-        axis.title.x = element_text(margin = margin(t = 10))) +
-  annotation_custom(ggplotGrob(fig4a_inset), xmin = 0.35, xmax = 0.6,
-                    ymin = 3.5, ymax = 8)
-
-fig4a
+        axis.title.x = element_text(margin = margin(t = 10)),
+        legend.title = element_blank()) +
+  annotation_custom(ggplotGrob(inset), xmin = 0.35, xmax = 0.6,
+                    ymin = 5, ymax = 10)
 ```
 
 How does the effect of condition vary across individual dogs?
@@ -223,6 +230,11 @@ brmstools::forest(m3.2, pars = 'condition', grouping = 'ID') +
 ```
 
 Condition doesn't seem to have an effect for any individual dog either.
+
+```{r echo=F}
+# cleanup
+rm(inset, post)
+```
 
 ## 1.3. Trial-only model
 
@@ -235,11 +247,12 @@ m3.3 <- brm(data = d, family = zero_inflated_poisson,
             prior = c(prior(student_t(3, -2, 10), class = b, coef = "intercept"),
                       prior(normal(0, 1), class = b, coef = "trial"),
                       prior(logistic(0, 1), class = b, coef = "intercept", dpar = zi),
-                      prior(normal(0, 1), class = b, coef = "trial", dpar = zi)),
+                      prior(normal(0, 1), class = b, coef = "trial", dpar = zi),
+                      prior(student_t(3, 0, 0.5), class = sd, dpar = zi)),
             iter = 2000, warmup = 1000, chains = 4, cores = 4,
-            control = list(adapt_delta = 0.999))
+            control = list(adapt_delta = 0.999, max_treedepth = 15))
 
-m3.3 <- add_ic(m3.3, ic = c("loo","waic"))
+m3.3 <- add_criterion(m3.3, c("loo","waic"))
 
 save(m3.3, file = 'models/m3.3.rda')
 ```
@@ -268,11 +281,12 @@ m3.4 <- brm(data = d, family = zero_inflated_poisson,
                       prior(normal(0, 1), class = b, coef = "trial"),
                       prior(logistic(0, 1), class = b, coef = "intercept", dpar = zi),
                       prior(normal(0, 1), class = b, coef = "condition", dpar = zi),
-                      prior(normal(0, 1), class = b, coef = "trial", dpar = zi)),
+                      prior(normal(0, 1), class = b, coef = "trial", dpar = zi),
+                      prior(student_t(3, 0, 0.5), class = sd, dpar = zi)),
             iter = 2000, warmup = 1000, chains = 4, cores = 4,
             control = list(adapt_delta = 0.999))
 
-m3.4 <- add_ic(m3.4, ic = c("loo","waic"))
+m3.4 <- add_criterion(m3.4, c("loo","waic"))
 
 save(m3.4, file = 'models/m3.4.rda')
 ```
@@ -303,11 +317,12 @@ m3.5 <- brm(data = d, family = zero_inflated_poisson,
                       prior(logistic(0, 1), class = b, coef = "intercept", dpar = zi),
                       prior(normal(0, 1), class = b, coef = "condition", dpar = zi),
                       prior(normal(0, 1), class = b, coef = "trial", dpar = zi),
-                      prior(normal(0, 1), class = b, coef = "condition:trial", dpar = zi)),
+                      prior(normal(0, 1), class = b, coef = "condition:trial", dpar = zi),
+                      prior(student_t(3, 0, 0.5), class = sd, dpar = zi)),
             iter = 2000, warmup = 1000, chains = 4, cores = 4,
             control = list(adapt_delta = 0.999))
 
-m3.5 <- add_ic(m3.5, ic = c("loo","waic"))
+m3.5 <- add_criterion(m3.5, c("loo","waic"))
 
 save(m3.5, file = 'models/m3.5.rda')
 ```
@@ -334,58 +349,70 @@ anti2rate <- exp(post$b_intercept + post$b_trial) * 60
 pro1rate  <- exp(post$b_intercept + post$b_condition) * 60
 pro2rate  <- exp(post$b_intercept + post$b_condition + post$b_trial + post$`b_condition:trial`) * 60
 
-# no subtantial differences between cells
-sum(anti1rate - anti2rate < 0) / 4000
-sum(anti1rate - pro1rate < 0) / 4000
-sum(anti1rate - pro2rate < 0) / 4000
-sum(anti2rate - pro1rate < 0) / 4000
-sum(anti2rate - pro2rate < 0) / 4000
-sum(pro1rate - pro2rate < 0) / 4000
+diff1 <- anti1rate - anti2rate 
+diff2 <- anti1rate - pro1rate  
+diff3 <- anti1rate - pro2rate  
+diff4 <- anti2rate - pro1rate  
+diff5 <- anti2rate - pro2rate  
+diff6 <- pro1rate  - pro2rate
+
+(sum(diff1 > 0) / length(diff1)) %>% round(2)
+(sum(diff2 > 0) / length(diff2)) %>% round(2)
+(sum(diff3 > 0) / length(diff3)) %>% round(2)
+(sum(diff4 > 0) / length(diff4)) %>% round(2)
+(sum(diff5 > 0) / length(diff5)) %>% round(2)
+(sum(diff6 > 0) / length(diff6)) %>% round(2)
+```
+
+Is there an interaction effect?
+
+```{r}
+(sum(diff2 - diff5 < 0) / length(diff2)) %>% round(2)
+```
+
+No.
+
+```{r echo=F}
+# cleanup
+rm(post, anti1rate, anti2rate, pro1rate, pro2rate,
+   diff1, diff2, diff3, diff4, diff5, diff6)
 ```
 
 ## 1.6. Compare models
 
-WAIC.
-
 ```{r}
-compare_ic(m3.1, m3.2, m3.3, m3.4, m3.5, ic = "waic")
-model_weights(m3.1, m3.2, m3.3, m3.4, m3.5, weights = "waic") %>% round(3)
+loo_compare(m3.1, m3.2, m3.3, m3.4, m3.5)
 ```
 
 ```{r echo=F}
 # visualise model comparison
-fig4b <-
-  compare_ic(m3.1, m3.2, m3.3, m3.4, m3.5, ic = "waic")$ic_diffs__ %>%
-  as.matrix() %>% as.tibble() %>% slice(1:4) %>%
+tibble(
+    elpd_diff = c(loo_compare(m3.1, m3.2)[2],
+                  loo_compare(m3.1, m3.3)[2],
+                  loo_compare(m3.1, m3.4)[2],
+                  loo_compare(m3.1, m3.5)[2]),
+    se_diff = c(loo_compare(m3.1, m3.2)[4],
+                  loo_compare(m3.1, m3.3)[4],
+                  loo_compare(m3.1, m3.4)[4],
+                  loo_compare(m3.1, m3.5)[4])
+        ) %>%
+  as.matrix() %>% as_tibble() %>%
   mutate(model = c("Prosocial",
                    "Trial",
                    "Prosocial+Trial",
                    "Prosocial*Trial")) %>%
   
   ggplot(aes(x = fct_rev(factor(model, levels = model)), 
-             y = WAIC*-1, 
-             ymin = WAIC*-1 - (SE*1.96), 
-             ymax = WAIC*-1 + (SE*1.96))) +
+             y = elpd_diff, 
+             ymin = elpd_diff - (se_diff*1.96), 
+             ymax = elpd_diff + (se_diff*1.96))) +
   geom_pointrange(size = 0.35) +
   geom_hline(yintercept = 0, linetype = "dashed") +
   coord_flip() +
   xlab(NULL) +
-  ylim(-12,12) +
-  ylab("WAIC difference from null model") +
+  ylim(-8,8) +
+  ylab("Difference in expected predictive accuracy\nfrom null model") +
   theme_classic()
-
-# save for publication
-fig4 <- plot_grid(fig4a, NULL, fig4b, labels = c("a","","b"), nrow=1,
-                  rel_widths = c(1, 0.05, 0.7))
-ggsave(file = "figures/fig4.pdf", fig4, height = 3.5, width = 8)
-ggsave(file = "figures/fig4.jpg", fig4, height = 3.5, width = 8)
-```
-
-LOO.
-
-```{r}
-compare_ic(m3.1, m3.2, m3.3, m3.4, m3.5, ic = "loo")
-model_weights(m3.1, m3.2, m3.3, m3.4, m3.5, weights = "loo") %>% round(3)
 ```
 
 # 2. Fit Poisson models
@@ -400,7 +427,7 @@ m4.1 <- brm(data = d, family = poisson,
             iter = 2000, warmup = 1000, chains = 4, cores = 4,
             control = list(adapt_delta = 0.999))
 
-m4.1 <- add_ic(m4.1, ic = c("loo","waic"))
+m4.1 <- add_criterion(m4.1, c("loo","waic"))
 
 save(m4.1, file = 'models/m4.1.rda')
 ```
@@ -429,11 +456,10 @@ post <- posterior_samples(m4.1)
 The dogs yawn 0.16 times a minute, on average. Not much different from the zero-inflated model. Quick model comparison?
 
 ```{r}
-compare_ic(m3.1, m4.1, ic = "waic")
-compare_ic(m3.1, m4.1, ic = "loo")
+loo_compare(m3.1, m4.1)
 ```
 
-The zero-inflated model is slightly better, but not by much.
+The two models perform no differently.
 
 ## 2.2. Condition-only model
 
@@ -448,7 +474,7 @@ m4.2 <- brm(data = d, family = poisson,
             iter = 2000, warmup = 1000, chains = 4, cores = 4,
             control = list(adapt_delta = 0.999))
 
-m4.2 <- add_ic(m4.2, ic = c("loo","waic"))
+m4.2 <- add_criterion(m4.2, c("loo","waic"))
 
 save(m4.2, file = 'models/m4.2.rda')
 ```
@@ -483,7 +509,7 @@ post <- posterior_samples(m4.2)
 Estimates are not much different from the zero-inflated model. Again, posterior probability mass shows that the difference between these is not substantial.
 
 ```{r}
-sum(post$b_condition > 0) / 4000
+(sum(post$b_condition < 0) / length(post$b_condition)) %>% round(2)
 ```
 
 Let's visualise the difference with our Poisson model.
@@ -504,17 +530,22 @@ tibble(
         axis.ticks = element_blank(),
         axis.text.y = element_blank(),
         axis.title.y = element_blank(),
-        axis.title.x = element_text(margin = margin(t = 10)))
+        axis.title.x = element_text(margin = margin(t = 10)),
+        legend.title = element_blank())
 ```
 
 Quick model comparison?
 
 ```{r}
-compare_ic(m3.2, m4.2, ic = "waic")
-compare_ic(m3.2, m4.2, ic = "loo")
+loo_compare(m3.2, m4.2)
 ```
 
-Both WAIC and LOO suggest that the Poisson model is substantially worse in this case.
+The model types are no different.
+
+```{r echo=F}
+# cleanup
+rm(post)
+```
 
 ## 2.3. Trial-only model
 
@@ -527,7 +558,7 @@ m4.3 <- brm(data = d, family = poisson,
             iter = 2000, warmup = 1000, chains = 4, cores = 4,
             control = list(adapt_delta = 0.999))
 
-m4.3 <- add_ic(m4.3, ic = c("loo","waic"))
+m4.3 <- add_criterion(m4.3, c("loo","waic"))
 
 save(m4.3, file = 'models/m4.3.rda')
 ```
@@ -555,7 +586,7 @@ m4.4 <- brm(data = d, family = poisson,
           iter = 2000, warmup = 1000, chains = 4, cores = 4,
           control = list(adapt_delta = 0.999))
 
-m4.4 <- add_ic(m4.4, ic = c("loo","waic"))
+m4.4 <- add_criterion(m4.4, c("loo","waic"))
 
 save(m4.4, file = 'models/m4.4.rda')
 ```
@@ -584,7 +615,7 @@ m4.5 <- brm(data = d, family = poisson,
           iter = 2000, warmup = 1000, chains = 4, cores = 4,
           control = list(adapt_delta = 0.999))
 
-m4.5 <- add_ic(m4.5, ic = c("loo","waic"))
+m4.5 <- add_criterion(m4.5, c("loo","waic"))
 
 save(m4.5, file = 'models/m4.5.rda')
 ```
@@ -602,29 +633,208 @@ prior_summary(m4.5)
 
 ## 2.6. Compare models
 
-Let's compare every model fitted so far. First, WAIC.
+Let's compare every model fitted so far.
 
 ```{r}
-compare_ic(m3.1, m3.2, m3.3, m3.4, m3.5,
-           m4.1, m4.2, m4.3, m4.4, m4.5,
-           ic = "waic")
+loo_compare(m3.1, m3.2, m3.3, m3.4, m3.5,
+            m4.1, m4.2, m4.3, m4.4, m4.5)
 ```
 
-LOO.
+These models are indistinguishable.
+
+# 3. Fit hurdle Poisson models
+
+After running further model types for our main reanalysis, it transpired that a hurdle Poisson model fitted the data better than a zero-inflated Poisson model. We test this with our experimental data too.
+
+## 3.1. Intercept-only model
+
+```{r eval=F, echo=F}
+m9.1 <- brm(data = d, family = hurdle_poisson,
+            bf(numberYawns ~ 0 + intercept + offset(log(secs)) + (0 + intercept | ID),
+               hu ~ 0 + intercept + (0 + intercept | ID)),
+            prior = c(prior(student_t(3, -2, 10), class = b, coef = "intercept"),
+                      prior(logistic(0, 1), class = b, coef = "intercept", dpar = hu),
+                      prior(student_t(3, 0, 0.5), class = sd, dpar = hu)),
+            iter = 2000, warmup = 1000, chains = 4, cores = 4,
+            control = list(adapt_delta = 0.999))
+
+m9.1 <- add_criterion(m9.1, c("loo","waic"))
+
+save(m9.1, file = 'models/m9.1.rda')
+```
+
+```{r echo=F}
+load('models/m9.1.rda')
+summary(m9.1)
+```
+
+Model comparison.
 
 ```{r}
-compare_ic(m3.1, m3.2, m3.3, m3.4, m3.5,
-           m4.1, m4.2, m4.3, m4.4, m4.5,
-           ic = "loo")
+loo_compare(m3.1, m9.1)
 ```
 
-Of every model fitted, `m3.5` seems to reign. How does this model do at prediction?
+A hurdle model is no better than a zero-inflated model.
+
+## 3.2. Condition-only model
+
+```{r eval=F, echo=F}
+m9.2 <- brm(data = d, family = hurdle_poisson,
+            bf(numberYawns ~ 0 + intercept + condition + offset(log(secs)) + 
+                 (0 + intercept  + condition | ID),
+               hu ~ 0 + intercept + condition + (0 + intercept + condition | ID)),
+            prior = c(prior(student_t(3, -2, 10), class = b, coef = "intercept"),
+                      prior(normal(0, 1), class = b, coef = "condition"),
+                      prior(logistic(0, 1), class = b, coef = "intercept", dpar = hu),
+                      prior(normal(0, 1), class = b, coef = "condition", dpar = hu),
+                      prior(student_t(3, 0, 0.5), class = sd, dpar = hu)),
+            iter = 2000, warmup = 1000, chains = 4, cores = 4,
+            control = list(adapt_delta = 0.999))
+
+m9.2 <- add_criterion(m9.2, c("loo","waic"))
+
+save(m9.2, file = 'models/m9.2.rda')
+```
+
+```{r echo=F}
+load('models/m9.2.rda')
+summary(m9.2)
+```
+
+Model comparison.
 
 ```{r}
-pp_check(m3.5)
+loo_compare(m3.2, m9.2)
 ```
 
-Posterior predictions are relatively accurate. But this model indicates no effect of condition.
+Both model classes perform similarly.
+
+# 4. Fit various negative binomial models
+
+For completion's sake, we also fit NB models that deal with overdispersion in the data.
+
+## 4.1. Negative binomial models
+
+### 4.1.1. Intercept-only model
+
+```{r eval=F, echo=F}
+m10.1 <- brm(data = d, family = negbinomial,
+            numberYawns ~ 0 + intercept + offset(log(secs)) + (0 + intercept | ID),
+            prior = prior(student_t(3, -2, 10), class = b, coef = "intercept"),
+            iter = 2000, warmup = 1000, chains = 4, cores = 4,
+            control = list(adapt_delta = 0.99))
+
+m10.1 <- add_criterion(m10.1, c("loo","waic"))
+
+save(m10.1, file = 'models/m10.1.rda')
+```
+
+```{r echo=F}
+load('models/m10.1.rda')
+summary(m10.1)
+```
+
+Model comparison.
+
+```{r echo=F}
+loo_compare(m3.1, m4.1, m9.1, m10.1)
+```
+
+All are comparable.
+
+### 4.1.2. Condition-only model
+
+```{r eval=F, echo=F}
+m10.2 <- brm(data = d, family = negbinomial,
+            numberYawns ~ 0 + intercept + condition + offset(log(secs)) + (0 + intercept + condition | ID),
+            prior = c(prior(student_t(3, -2, 10), class = b, coef = "intercept"),
+                      prior(normal(0, 1), class = b, coef = "condition")),
+            iter = 2000, warmup = 1000, chains = 4, cores = 4,
+            control = list(adapt_delta = 0.99))
+
+m10.2 <- add_criterion(m10.2, c("loo","waic"))
+
+save(m10.2, file = 'models/m10.2.rda')
+```
+
+```{r echo=F}
+load('models/m10.2.rda')
+summary(m10.2)
+```
+
+Model comparison.
+
+```{r}
+loo_compare(m3.2, m4.2, m9.2, m10.2)
+```
+
+Again, the models are comparable.
+
+## 4.2. Zero-inflated negative binomial models
+
+### 4.2.1. Intercept-only model
+
+```{r eval=F, echo=F}
+m11.1 <- brm(data = d, family = zero_inflated_negbinomial,
+            bf(numberYawns ~ 0 + intercept + offset(log(secs)) + (0 + intercept | ID),
+               zi ~ 0 + intercept + (0 + intercept | ID)),
+            prior = c(prior(student_t(3, -2, 10), class = b, coef = "intercept"),
+                      prior(logistic(0, 1), class = b, coef = "intercept", dpar = zi),
+                      prior(student_t(3, 0, 0.5), class = sd, dpar = zi)),
+            iter = 2000, warmup = 1000, chains = 4, cores = 4,
+            control = list(adapt_delta = 0.999))
+
+m11.1 <- add_criterion(m11.1, c("loo","waic"))
+
+save(m11.1, file = 'models/m11.1.rda')
+```
+
+```{r echo=F}
+load('models/m11.1.rda')
+summary(m11.1)
+```
+
+Model comparison.
+
+```{r}
+loo_compare(m3.1, m4.1, m9.1, m10.1, m11.1)
+```
+
+### 4.2.2. Condition-only model
+
+```{r eval=F, echo=F}
+m11.2 <- brm(data = d, family = zero_inflated_negbinomial,
+            bf(numberYawns ~ 0 + intercept + condition + offset(log(secs)) + (0 + intercept + condition | ID),
+               zi ~ 0 + intercept + condition + (0 + intercept + condition | ID)),
+            prior = c(prior(student_t(3, -2, 10), class = b, coef = "intercept"),
+                      prior(normal(0, 1), class = b, coef = "condition"),
+                      prior(logistic(0, 1), class = b, coef = "intercept", dpar = zi),
+                      prior(normal(0, 1), class = b, coef = "condition", dpar = zi),
+                      prior(student_t(3, 0, 0.5), class = sd, dpar = zi)),
+            iter = 2000, warmup = 1000, chains = 4, cores = 4,
+            control = list(adapt_delta = 0.999))
+
+m11.2 <- add_criterion(m11.2, c("loo","waic"))
+
+save(m11.2, file = 'models/m11.2.rda')
+```
+
+```{r echo=F}
+load('models/m11.2.rda')
+summary(m11.2)
+```
+
+Model comparison.
+
+```{r}
+loo_compare(m3.2, m4.2, m9.2, m10.2, m11.2)
+```
+
+All models are comparable.
+
+## 4.3. Hurdle negative binomial models
+
+Unfortunately, this model class does not converge in brms with these data.
 
 # Session Info
 

@@ -1,0 +1,472 @@
+---
+title: "Contagious Yawning in Dogs: Prosocial Experiment Analysis (Part 2)"
+author: Scott Claessens and Patrick Neilands
+date: "`r format(Sys.Date())`"
+output:
+  html_document:
+    df_print: paged
+    toc: true
+    number_sections: false
+    toc_float: true
+---
+
+The purpose of this document is to analyse data from a new experiment on contagious yawning in dogs in the presence of either a prosocial or antisocial demonstrator.
+
+# 0. Setup
+
+```{r echo=FALSE, cache=FALSE, include=FALSE}
+options(width = 120)
+
+library(tidyverse)
+library(brms)
+library(tidybayes)
+library(bayesplot)
+library(brmstools)
+library(cowplot)
+```
+
+Load the data.
+
+```{r}
+d <-
+  read.csv("data/yawnProsocial.csv") %>%
+  as_tibble() %>%
+  # create dummy variables for analysis
+  mutate(condition = ifelse(condition == "Anti-Social", 0, 1),
+         trial     = ifelse(trial == 1, 0, 1))
+
+d
+```
+
+In the previous document (`yawnProsocial.rmd`), we analysed these data using zero-inflated Poisson models. Following the suggestions of two reviewers, we now re-analyse these data using hurdle Poisson models. 
+
+# 1. Fit hurdle Poisson models
+
+## 1.1. Intercept-only model
+
+We fitted this model in the previous document.
+
+```{r echo=F}
+load('models/m9.1.rda')
+summary(m9.1)
+```
+
+What priors did we use?
+
+```{r echo=F}
+prior_summary(m9.1)
+```
+
+Let's interpret each parameter in turn. The hurdle parameter `hu` is -0.28. This is on the logit scale, so we need to calculate the inverse logit.
+
+```{r}
+post <- posterior_samples(m9.1)
+
+1 - inv_logit_scaled(post$b_hu_intercept) %>% # prob of yawning
+  median() %>%
+  round(2)
+```
+
+Let's calculate the average yawning rate.
+
+```{r}
+(exp(post$b_intercept) * 60) %>% # Yawning rate (per min)
+  median() %>%
+  round(2)
+```
+
+The dogs yawn 0.17 times a minute, on average. Let's split this by ID.
+
+```{r warning=F, message=F, echo=F}
+brmstools::forest(m9.1, pars = 'intercept', grouping = 'ID')
+```
+
+Remember, this is on the log scale. But it seems like there isn't much variation in yawning rates across dogs.
+
+```{r echo=F}
+# cleanup
+rm(post)
+```
+
+## 1.2. Condition-only model
+
+We also fitted this model in the previous document.
+
+```{r echo=F}
+load('models/m9.2.rda')
+summary(m9.2)
+```
+
+What priors did we use?
+
+```{r echo=F}
+prior_summary(m9.2)
+```
+
+The condition parameters have 95% CIs crossing zero, suggesting that there is no difference in probability of yawning or yawning rates between conditions. Let's calculate this directly.
+
+```{r}
+post <- posterior_samples(m9.2)
+
+# prob yawning in Anti-Social condition
+(1 - inv_logit_scaled(post$b_hu_intercept)) %>%
+  median() %>%
+  round(2)
+
+# prob yawning in Pro-Social condition
+(1 - inv_logit_scaled(post$b_hu_intercept + post$b_hu_condition)) %>%
+  median() %>%
+  round(2)
+```
+
+No difference between these probabilities.
+
+```{r}
+(sum(post$b_hu_condition > 0) / length(post$b_hu_condition)) %>% round(2)
+```
+
+```{r}
+# Yawning rate (per min) in Anti-Social condition
+(exp(post$b_intercept) * 60) %>%
+  median() %>%
+  round(2)
+
+# Yawning rate (per min) in Pro-Social condition
+(exp(post$b_intercept + post$b_condition) * 60) %>%
+  median() %>%
+  round(2)
+```
+
+Psoterior probability mass shows that the difference between these is not substantial.
+
+```{r}
+(sum(post$b_condition < 0) / length(post$b_condition)) %>% round(2)
+```
+
+Let's visualise these diferences on the original scales.
+
+```{r echo=F, warning=F, message=F}
+figS5_inset <-
+  tibble(
+    diff  = (1- inv_logit_scaled(post$b_hu_intercept)) - (1 - inv_logit_scaled(post$b_hu_intercept + post$b_hu_condition))
+    ) %>%
+  ggplot(aes(x = diff)) +
+  geom_density(fill = "grey90") +
+  geom_vline(xintercept = 0, linetype = "dashed") +
+  xlab("difference") +
+  xlim(c(-0.6,0.6)) +
+  theme_classic() +
+  theme(axis.line = element_blank(),
+        axis.ticks = element_blank(),
+        axis.text.y = element_blank(),
+        axis.title.y = element_blank(),
+        text = element_text(size = 9))
+
+figS5 <-
+  tibble(
+    Antisocial = 1- inv_logit_scaled(post$b_hu_intercept),
+    Prosocial  = 1 - inv_logit_scaled(post$b_hu_intercept + post$b_hu_condition)
+    ) %>%
+  gather(Condition, yawns) %>%
+  
+  ggplot(aes(x = yawns, fill = Condition, colour = Condition)) +
+  geom_density(alpha = 0.1) +
+  xlab("Probability of yawning") +
+  xlim(c(0, 1)) +
+  theme_classic() +
+  theme(axis.line = element_blank(),
+        axis.ticks = element_blank(),
+        axis.text.y = element_blank(),
+        axis.title.y = element_blank(),
+        axis.title.x = element_text(margin = margin(t = 10)),
+        legend.title = element_blank()) +
+  annotation_custom(ggplotGrob(figS5_inset), xmin = 0, xmax = 0.3,
+                    ymin = 2, ymax = 4.5)
+
+figS5
+
+# save
+ggsave(file = "figures/figS5.pdf", figS5, height = 3, width = 6)
+ggsave(file = "figures/figS5.jpg", figS5, height = 3, width = 6)
+```
+
+```{r echo=F, warning=F, message=F}
+fig4a_inset <-
+  tibble(
+    diff  = (exp(post$b_intercept) - exp(post$b_intercept + post$b_condition)) * 60
+    ) %>%
+  ggplot(aes(x = diff)) +
+  geom_density(fill = "grey90") +
+  geom_vline(xintercept = 0, linetype = "dashed") +
+  xlab("difference") +
+  xlim(c(-0.25,0.5)) +
+  theme_classic() +
+  theme(axis.line = element_blank(),
+        axis.ticks = element_blank(),
+        axis.text.y = element_blank(),
+        axis.title.y = element_blank(),
+        text = element_text(size = 9))
+
+fig4a <-
+  tibble(
+    Antisocial = exp(post$b_intercept) * 60,
+    Prosocial  = exp(post$b_intercept + post$b_condition) * 60
+    ) %>%
+  gather(Condition, yawns) %>%
+  
+  ggplot(aes(x = yawns, fill = Condition, colour = Condition)) +
+  geom_density(alpha = 0.1) +
+  xlab("Yawning rate (per min)") +
+  xlim(c(0, 0.6)) +
+  theme_classic() +
+  theme(axis.line = element_blank(),
+        axis.ticks = element_blank(),
+        axis.text.y = element_blank(),
+        axis.title.y = element_blank(),
+        axis.title.x = element_text(margin = margin(t = 10)),
+        legend.title = element_blank()) +
+  annotation_custom(ggplotGrob(fig4a_inset), xmin = 0.35, xmax = 0.6,
+                    ymin = 3.5, ymax = 8)
+
+fig4a
+```
+
+How do the effects of condition vary across individual dogs?
+
+```{r echo=F, warning=F, message=F}
+brmstools::forest(m9.2, pars = 'hu_condition', grouping = 'ID') +
+  geom_vline(xintercept = 0, linetype = "dashed")
+
+brmstools::forest(m9.2, pars = 'condition', grouping = 'ID') +
+  geom_vline(xintercept = 0, linetype = "dashed")
+```
+
+Condition doesn't seem to have an effect on probability of yawning or yawning rate for any individual dog either.
+
+```{r echo=F}
+# cleanup
+rm(fig4a_inset, figS5_inset, post)
+```
+
+## 1.3. Trial-only model
+
+```{r eval=F, echo=F}
+m9.3 <- brm(data = d, family = hurdle_poisson,
+            bf(numberYawns ~ 0 + intercept + trial + offset(log(secs)) + 
+                 (0 + intercept + trial | ID),
+               hu ~ 0 + intercept + trial + 
+                 (0 + intercept + trial | ID)),
+            prior = c(prior(student_t(3, -2, 10), class = b, coef = "intercept"),
+                      prior(normal(0, 1), class = b, coef = "trial"),
+                      prior(logistic(0, 1), class = b, coef = "intercept", dpar = hu),
+                      prior(normal(0, 1), class = b, coef = "trial", dpar = hu),
+                      prior(student_t(3, 0, 0.5), class = sd, dpar = hu)),
+            iter = 2000, warmup = 1000, chains = 4, cores = 4,
+            control = list(adapt_delta = 0.999, max_treedepth = 15))
+
+m9.3 <- add_criterion(m9.3, c("loo","waic"))
+
+save(m9.3, file = 'models/m9.3.rda')
+```
+
+```{r echo=F}
+load('models/m9.3.rda')
+summary(m9.3)
+```
+
+Priors.
+
+```{r echo=F}
+prior_summary(m9.3)
+```
+
+## 1.4. Condition + Trial model
+
+```{r eval=F, echo=F}
+m9.4 <- brm(data = d, family = hurdle_poisson,
+            bf(numberYawns ~ 0 + intercept + condition + trial + offset(log(secs)) + 
+                 (0 + intercept + condition + trial | ID),
+               hu ~ 0 + intercept + condition + trial + 
+                 (0 + intercept + condition + trial | ID)),
+            prior = c(prior(student_t(3, -2, 10), class = b, coef = "intercept"),
+                      prior(normal(0, 1), class = b, coef = "condition"),
+                      prior(normal(0, 1), class = b, coef = "trial"),
+                      prior(logistic(0, 1), class = b, coef = "intercept", dpar = hu),
+                      prior(normal(0, 1), class = b, coef = "condition", dpar = hu),
+                      prior(normal(0, 1), class = b, coef = "trial", dpar = hu),
+                      prior(student_t(3, 0, 0.5), class = sd, dpar = hu)),
+            iter = 2000, warmup = 1000, chains = 4, cores = 4,
+            control = list(adapt_delta = 0.999, max_treedepth = 15))
+
+m9.4 <- add_criterion(m9.4, c("loo","waic"))
+
+save(m9.4, file = 'models/m9.4.rda')
+```
+
+```{r echo=F}
+load('models/m9.4.rda')
+summary(m9.4)
+```
+
+Priors.
+
+```{r echo=F}
+prior_summary(m9.4)
+```
+
+## 1.5. Interaction model
+
+```{r eval=F, echo=F}
+m9.5 <- brm(data = d, family = hurdle_poisson,
+            bf(numberYawns ~ 0 + intercept + condition + trial + condition:trial + offset(log(secs)) + 
+                 (0 + intercept + condition + trial + condition:trial | ID),
+               hu ~ 0 + intercept + condition + trial + condition:trial + 
+                 (0 + intercept + condition + trial + condition:trial | ID)),
+            prior = c(prior(student_t(3, -2, 10), class = b, coef = "intercept"),
+                      prior(normal(0, 1), class = b, coef = "condition"),
+                      prior(normal(0, 1), class = b, coef = "trial"),
+                      prior(normal(0, 1), class = b, coef = "condition:trial"),
+                      prior(logistic(0, 1), class = b, coef = "intercept", dpar = hu),
+                      prior(normal(0, 1), class = b, coef = "condition", dpar = hu),
+                      prior(normal(0, 1), class = b, coef = "trial", dpar = hu),
+                      prior(normal(0, 1), class = b, coef = "condition:trial", dpar = hu),
+                      prior(student_t(3, 0, 2), class = sd), # added prior to help estimation
+                      prior(student_t(3, 0, 0.5), class = sd, dpar = hu)),
+            iter = 2000, warmup = 1000, chains = 4, cores = 4,
+            control = list(adapt_delta = 0.999, max_treedepth = 15))
+
+m9.5 <- add_criterion(m9.5, c("waic","loo"))
+
+save(m9.5, file = 'models/m9.5.rda')
+```
+
+```{r echo=F}
+load('models/m9.5.rda')
+summary(m9.5)
+```
+
+What priors did we use?
+
+```{r echo=F}
+prior_summary(m9.5)
+```
+
+Are there any differences between cells in the 2x2 design? Start with probability.
+
+```{r}
+post <- posterior_samples(m9.5)
+
+# prob yawning
+anti1prob <- 1 - inv_logit_scaled(post$b_hu_intercept)
+anti2prob <- 1 - inv_logit_scaled(post$b_hu_intercept + post$b_hu_trial)
+pro1prob  <- 1 - inv_logit_scaled(post$b_hu_intercept + post$b_hu_condition)
+pro2prob  <- 1 - inv_logit_scaled(post$b_hu_intercept + post$b_hu_condition + post$b_hu_trial + post$`b_hu_condition:trial`)
+
+# differences
+diff1 <- anti1prob - anti2prob
+diff2 <- anti1prob - pro1prob
+diff3 <- anti1prob - pro2prob
+diff4 <- anti2prob - pro1prob
+diff5 <- anti2prob - pro2prob
+diff6 <- pro1prob  - pro2prob
+
+(sum(diff1 < 0) / length(diff1)) %>% round(2)
+(sum(diff2 < 0) / length(diff2)) %>% round(2)
+(sum(diff3 < 0) / length(diff3)) %>% round(2)
+(sum(diff4 < 0) / length(diff4)) %>% round(2)
+(sum(diff5 < 0) / length(diff5)) %>% round(2)
+(sum(diff6 < 0) / length(diff6)) %>% round(2)
+
+# interaction
+(sum(diff2 - diff5 < 0) / length(diff2)) %>% round(2)
+```
+
+No differences between cells or interaction effect.
+
+```{r}
+# Yawning rate (per min)
+anti1rate <- exp(post$b_intercept) * 60
+anti2rate <- exp(post$b_intercept + post$b_trial) * 60
+pro1rate  <- exp(post$b_intercept + post$b_condition) * 60
+pro2rate  <- exp(post$b_intercept + post$b_condition + post$b_trial + post$`b_condition:trial`) * 60
+
+# differences
+diff1 <- anti1rate - anti2rate
+diff2 <- anti1rate - pro1rate
+diff3 <- anti1rate - pro2rate
+diff4 <- anti2rate - pro1rate
+diff5 <- anti2rate - pro2rate
+diff6 <- pro1rate  - pro2rate
+
+(sum(diff1 > 0) / length(diff1)) %>% round(2)
+(sum(diff2 > 0) / length(diff2)) %>% round(2)
+(sum(diff3 > 0) / length(diff3)) %>% round(2)
+(sum(diff4 > 0) / length(diff4)) %>% round(2)
+(sum(diff5 > 0) / length(diff5)) %>% round(2)
+(sum(diff6 > 0) / length(diff6)) %>% round(2)
+
+# interaction
+(sum(diff2 - diff5 < 0) / length(diff2)) %>% round(2)
+```
+
+No substantial differences between cells or interaction effect.
+
+## 1.6. Compare models
+
+```{r}
+loo_compare(m9.1, m9.2, m9.3, m9.4, m9.5)
+```
+
+```{r echo=F}
+# visualise model comparison
+fig4b <-
+  tibble(
+    elpd_diff = c(loo_compare(m9.1, m9.2)[2],
+                  loo_compare(m9.1, m9.3)[2],
+                  loo_compare(m9.1, m9.4)[2],
+                  loo_compare(m9.1, m9.5)[2]),
+    se_diff = c(loo_compare(m9.1, m9.2)[4],
+                  loo_compare(m9.1, m9.3)[4],
+                  loo_compare(m9.1, m9.4)[4],
+                  loo_compare(m9.1, m9.5)[4])
+        ) %>%
+  as.matrix() %>% as_tibble() %>%
+  mutate(model = c("Prosocial",
+                   "Trial",
+                   "Prosocial+Trial",
+                   "Prosocial*Trial")) %>%
+  
+  ggplot(aes(x = fct_rev(factor(model, levels = model)), 
+             y = elpd_diff, 
+             ymin = elpd_diff - (se_diff*1.96), 
+             ymax = elpd_diff + (se_diff*1.96))) +
+  geom_pointrange(size = 0.35) +
+  geom_hline(yintercept = 0, linetype = "dashed") +
+  coord_flip() +
+  xlab(NULL) +
+  ylim(-8,8) +
+  ylab("Difference in expected predictive accuracy\nfrom null model") +
+  theme_classic() +
+  theme(axis.title.x = element_text(size = 10))
+
+fig4b
+
+# save for publication
+fig4 <- plot_grid(fig4a, NULL, fig4b, labels = c("a","","b"), nrow=1,
+                  rel_widths = c(1, 0.05, 0.85))
+ggsave(file = "figures/fig4.pdf", fig4, height = 3.5, width = 8)
+ggsave(file = "figures/fig4.jpg", fig4, height = 3.5, width = 8)
+```
+
+```{r echo=F}
+# cleanup
+rm(fig4a, fig4b, post, anti1prob, anti1rate, anti2prob, anti2rate,
+   pro1prob, pro1rate, pro2prob, pro2rate, diff1, diff2, diff3, diff4,
+   diff5, diff6)
+```
+
+# Session Info
+
+```{r}
+sessionInfo()
+```
