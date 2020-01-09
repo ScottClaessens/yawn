@@ -30,7 +30,6 @@ library(tidyverse)
 library(brms)
 library(tidybayes)
 library(bayesplot)
-library(brmstools)
 library(ggpubr)
 library(ggridges)
 library(grid)
@@ -175,7 +174,7 @@ diff <- cond2 - cond1
 Visualise effect of condition.
 
 ```{r warning=F, message=F,echo=F}
-figS1a_inset <-
+figS2a_inset <-
   tibble(
     diff  = ((1 - inv_logit_scaled(post$b_hu_intercept + post$b_hu_condition)) - 
                (1 - inv_logit_scaled(post$b_hu_intercept)))
@@ -192,7 +191,7 @@ figS1a_inset <-
         axis.title.y = element_blank(),
         text = element_text(size = 9))
 
-figS1a <-
+figS2a <-
   tibble(
     Control  = 1 - inv_logit_scaled(post$b_hu_intercept),
     Yawning  = 1 - inv_logit_scaled(post$b_hu_intercept + post$b_hu_condition)
@@ -209,10 +208,10 @@ figS1a <-
         axis.title.y = element_blank(),
         axis.title.x = element_text(margin = margin(t = 10)),
         legend.title = element_blank()) +
-  annotation_custom(ggplotGrob(figS1a_inset), xmin = 0.55, xmax = 0.9,
+  annotation_custom(ggplotGrob(figS2a_inset), xmin = 0.55, xmax = 0.9,
                     ymin = 3, ymax = 6)
 
-figS1a
+figS2a
 ```
 
 ```{r warning=F, message=F,echo=F}
@@ -258,16 +257,8 @@ fig1a
 
 The effect of condition across studies.
 
-```{r echo=F, message=F, warning=F, eval=F}
-brmstools::forest(m5.2, grouping = "study", pars = "hu_condition") +
-  geom_vline(xintercept = 0, linetype = "dashed")
-
-brmstools::forest(m5.2, grouping = "study", pars = "condition") +
-  geom_vline(xintercept = 0, linetype = "dashed")
-```
-
 ```{r echo=F, message=F, warning=F}
-figS1b <-
+figS2b <-
   tibble(
     `Average`    = ((1 - inv_logit_scaled(post$b_hu_intercept + post$b_hu_condition)) - 
                     (1 - inv_logit_scaled(post$b_hu_intercept))),
@@ -306,7 +297,7 @@ figS1b <-
         axis.title.y = element_blank(),
         axis.title.x = element_text(margin = margin(t = 10)))
 
-figS1b
+figS2b
 ```
 
 ```{r echo=F, message=F, warning=F}
@@ -354,7 +345,7 @@ fig1b
 
 ```{r echo=F}
 # cleanup
-rm(fig1a_inset, figS1a_inset, post, cond1, cond2, diff)
+rm(fig1a_inset, figS2a_inset, post, cond1, cond2, diff)
 ```
 
 ## 1.3. Familiarity-only model
@@ -589,7 +580,7 @@ Does the effect of condition differ between familiar and unfamiliar demonstrator
 Visualise.
 
 ```{r warning=F, message=F, echo=F}
-figS2_insetUnfamiliar <-
+figS4_insetUnfamiliar <-
   tibble(
     diff  = ((1 - inv_logit_scaled(post$b_hu_intercept + post$b_hu_condition)) - 
                (1 - inv_logit_scaled(post$b_hu_intercept)))
@@ -606,7 +597,7 @@ figS2_insetUnfamiliar <-
         axis.title.y = element_blank(),
         text = element_text(size = 9))
 
-figS2_insetFamiliar <-
+figS4_insetFamiliar <-
   tibble(
     diff  = ((1 - inv_logit_scaled(post$b_hu_intercept + post$b_hu_familiar + 
                                      post$b_hu_condition + post$`b_hu_condition:familiar`)) - 
@@ -634,7 +625,7 @@ annotation_custom2 <- function (grob, xmin = -Inf, xmax = Inf, ymin = -Inf, ymax
                                             ymin = ymin, ymax = ymax))
   }
 
-figS2 <-
+figS4 <-
   tibble(
     ControlUnfamiliar  = 1 - inv_logit_scaled(post$b_hu_intercept),
     YawningUnfamiliar  = 1 - inv_logit_scaled(post$b_hu_intercept + post$b_hu_condition),
@@ -658,18 +649,18 @@ figS2 <-
         axis.title.y = element_blank(),
         axis.title.x = element_text(margin = margin(t = 10)),
         legend.title = element_blank()) +
-  annotation_custom2(ggplotGrob(figS2_insetFamiliar), 
+  annotation_custom2(ggplotGrob(figS4_insetFamiliar), 
                      data=data.frame(Familiarity="Familiar", Condition = NA, yawns = 1),
                      xmin=0.4, xmax=0.95, ymin=3.5, ymax=6.5) +
-  annotation_custom2(ggplotGrob(figS2_insetUnfamiliar), 
+  annotation_custom2(ggplotGrob(figS4_insetUnfamiliar), 
                      data=data.frame(Familiarity="Unfamiliar", Condition = NA, yawns = 1),
                      xmin=0.4, xmax=0.95, ymin=3.5, ymax=6.5)
 
-figS2
+figS4
 
 # save
-ggsave(file = "figures/figS2.pdf", figS2, height = 3.5, width = 8)
-ggsave(file = "figures/figS2.jpg", figS2, height = 5.5, width = 8)
+ggsave(file = "figures/figS4.pdf", figS4, height = 3.5, width = 8)
+ggsave(file = "figures/figS4.jpg", figS4, height = 5.5, width = 8)
 ```
 
 ```{r warning=F, message=F, echo=F}
@@ -823,8 +814,8 @@ Going forward, we choose the condition-only model to continue analysing, as the 
 
 ```{r echo=F}
 rm(fig2_first_row, fig2_second_row, fig2a, fig2a_insetFamiliar,
-   fig2a_insetUnfamiliar, fig2b, fig2c, figS2_insetFamiliar,
-   figS2_insetUnfamiliar, looFig, cond1fam, cond1unfam,
+   fig2a_insetUnfamiliar, fig2b, fig2c, figS4_insetFamiliar,
+   figS4_insetUnfamiliar, looFig, cond1fam, cond1unfam,
    cond2fam, cond2unfam, diff1, diff2, diff3, diff4, diff5, 
    diff6, post)
 ```
@@ -1123,7 +1114,7 @@ looFig <-
                    "Treatment+Demonstrator",
                    "Full model"))
 
-figS4 <-
+figS3 <-
   looFig %>%
   ggplot(aes(x = fct_rev(factor(model, levels = model)), 
              y = elpd_diff, 
@@ -1138,17 +1129,17 @@ figS4 <-
   theme_classic() +
   theme(axis.title.x = element_text(size = 10))
 
-figS4
+figS3
 
 # save for publication
-ggsave(file = "figures/figS4.pdf", figS4, height = 3, width = 6)
-ggsave(file = "figures/figS4.jpg", figS4, height = 3, width = 6)
+ggsave(file = "figures/figS3.pdf", figS3, height = 3, width = 6)
+ggsave(file = "figures/figS3.jpg", figS3, height = 3, width = 6)
 ```
 
 Plot condition parameter(s) with controls.
 
 ```{r message=F, warning=F, echo=F}
-figS1c <-
+figS2c <-
   tibble(
     `Treatment-only`           = ((1 - inv_logit_scaled(posterior_samples(m5.2)$b_hu_intercept + 
                                                        posterior_samples(m5.2)$b_hu_condition)) - 
@@ -1191,16 +1182,16 @@ figS1c <-
         axis.title.y = element_blank(),
         axis.title.x = element_text(margin = margin(t = 10)))
 
-figS1c
+figS2c
 
 # save plot
-figS1_first_row  <- plot_grid(figS1a, labels = c("a"))
-figS1_second_row <- plot_grid(figS1b, NULL, figS1c, nrow = 1, labels = c("b", "", "c"),
+figS2_first_row  <- plot_grid(figS2a, labels = c("a"))
+figS2_second_row <- plot_grid(figS2b, NULL, figS2c, nrow = 1, labels = c("b", "", "c"),
                               align = 'h', rel_widths = c(1, 0.1, 1.2))
-figS1 <- plot_grid(figS1_first_row, NULL, figS1_second_row, ncol = 1,
+figS2 <- plot_grid(figS2_first_row, NULL, figS2_second_row, ncol = 1,
                    align = 'v', rel_heights = c(1, 0.1, 1))
-ggsave(file = "figures/figS1.pdf", figS1, width = 7.5, height = 7)
-ggsave(file = "figures/figS1.jpg", figS1, width = 7.5, height = 7)
+ggsave(file = "figures/figS2.pdf", figS2, width = 7.5, height = 7)
+ggsave(file = "figures/figS2.jpg", figS2, width = 7.5, height = 7)
 ```
 
 ```{r message=F, warning=F, echo=F}
@@ -1256,7 +1247,7 @@ ggsave(file = "figures/fig1.jpg", fig1, width = 7.5, height = 7)
 ```{r echo=F}
 # cleanup
 rm(fig1_first_row, fig1_second_row, fig1a, fig1b, fig1c,
-   figS1_first_row, figS1_second_row, figS1a, figS1b, figS1c,
+   figS2_first_row, figS2_second_row, figS2a, figS2b, figS2c,
    looFig, post)
 ```
 
@@ -1490,7 +1481,7 @@ Does the effect of condition differ between males and females? Interaction effec
 Visualise.
 
 ```{r warning=F, message=F, echo=F}
-figS3_insetFemale <-
+figS5_insetFemale <-
   tibble(
     diff  = (1 - inv_logit_scaled(post$b_hu_intercept + post$b_hu_condition)) - 
                (1 - inv_logit_scaled(post$b_hu_intercept))
@@ -1507,7 +1498,7 @@ figS3_insetFemale <-
         axis.title.y = element_blank(),
         text = element_text(size = 9))
 
-figS3_insetMale <-
+figS5_insetMale <-
   tibble(
     diff  = (1 - inv_logit_scaled(post$b_hu_intercept + post$b_hu_male + 
                                     post$b_hu_condition + post$`b_hu_condition:male`)) - 
@@ -1525,7 +1516,7 @@ figS3_insetMale <-
         axis.title.y = element_blank(),
         text = element_text(size = 9))
 
-figS3 <-
+figS5 <-
   tibble(
     ControlFemale  = 1 - inv_logit_scaled(post$b_hu_intercept),
     YawningFemale  = 1 - inv_logit_scaled(post$b_hu_intercept + post$b_hu_condition),
@@ -1549,18 +1540,18 @@ figS3 <-
         axis.title.y = element_blank(),
         axis.title.x = element_text(margin = margin(t = 10)),
         legend.title = element_blank()) +
-  annotation_custom2(ggplotGrob(figS3_insetMale), 
+  annotation_custom2(ggplotGrob(figS5_insetMale), 
                      data=data.frame(Sex="Male", Condition = NA, yawns = 1),
                      xmin=0.45, xmax=0.95, ymin=3.5, ymax=6) +
-  annotation_custom2(ggplotGrob(figS3_insetFemale), 
+  annotation_custom2(ggplotGrob(figS5_insetFemale), 
                      data=data.frame(Sex="Female", Condition = NA, yawns = 1),
                      xmin=0.45, xmax=0.95, ymin=3.5, ymax=6)
 
-figS3
+figS5
 
 # save
-ggsave(file = "figures/figS3.pdf", figS3, height = 3.5, width = 8)
-ggsave(file = "figures/figS3.jpg", figS3, height = 3.5, width = 8)
+ggsave(file = "figures/figS5.pdf", figS5, height = 3.5, width = 8)
+ggsave(file = "figures/figS5.jpg", figS5, height = 3.5, width = 8)
 ```
 
 ```{r warning=F, message=F, echo=F}
@@ -1711,7 +1702,7 @@ ggsave(file = "figures/fig3.jpg", fig3, height = 7, width = 8)
 ```{r echo=F}
 # cleanup
 rm(fig3_first_row, fig3_second_row, fig3a, fig3a_insetFemale, fig3a_insetMale,
-   fig3b, fig3c, figS3_insetFemale, figS3_insetMale, looFig, post, cond1f, cond1m, 
+   fig3b, fig3c, figS5_insetFemale, figS5_insetMale, looFig, post, cond1f, cond1m, 
    cond2f, cond2m, diff1, diff2, diff3, diff4, diff5, diff6)
 ```
 

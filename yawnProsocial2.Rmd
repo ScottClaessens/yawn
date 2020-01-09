@@ -21,7 +21,6 @@ library(tidyverse)
 library(brms)
 library(tidybayes)
 library(bayesplot)
-library(brmstools)
 library(cowplot)
 ```
 
@@ -75,13 +74,7 @@ Let's calculate the average yawning rate.
   round(2)
 ```
 
-The dogs yawn 0.17 times a minute, on average. Let's split this by ID.
-
-```{r warning=F, message=F, echo=F}
-brmstools::forest(m9.1, pars = 'intercept', grouping = 'ID')
-```
-
-Remember, this is on the log scale. But it seems like there isn't much variation in yawning rates across dogs.
+The dogs yawn 0.17 times a minute, on average.
 
 ```{r echo=F}
 # cleanup
@@ -146,7 +139,7 @@ Psoterior probability mass shows that the difference between these is not substa
 Let's visualise these diferences on the original scales.
 
 ```{r echo=F, warning=F, message=F}
-figS5_inset <-
+figS6_inset <-
   tibble(
     diff  = (1- inv_logit_scaled(post$b_hu_intercept)) - (1 - inv_logit_scaled(post$b_hu_intercept + post$b_hu_condition))
     ) %>%
@@ -162,7 +155,7 @@ figS5_inset <-
         axis.title.y = element_blank(),
         text = element_text(size = 9))
 
-figS5 <-
+figS6 <-
   tibble(
     Antisocial = 1- inv_logit_scaled(post$b_hu_intercept),
     Prosocial  = 1 - inv_logit_scaled(post$b_hu_intercept + post$b_hu_condition)
@@ -180,14 +173,14 @@ figS5 <-
         axis.title.y = element_blank(),
         axis.title.x = element_text(margin = margin(t = 10)),
         legend.title = element_blank()) +
-  annotation_custom(ggplotGrob(figS5_inset), xmin = 0, xmax = 0.3,
+  annotation_custom(ggplotGrob(figS6_inset), xmin = 0, xmax = 0.3,
                     ymin = 2, ymax = 4.5)
 
-figS5
+figS6
 
 # save
-ggsave(file = "figures/figS5.pdf", figS5, height = 3, width = 6)
-ggsave(file = "figures/figS5.jpg", figS5, height = 3, width = 6)
+ggsave(file = "figures/figS6.pdf", figS6, height = 3, width = 6)
+ggsave(file = "figures/figS6.jpg", figS6, height = 3, width = 6)
 ```
 
 ```{r echo=F, warning=F, message=F}
@@ -231,21 +224,9 @@ fig4a <-
 fig4a
 ```
 
-How do the effects of condition vary across individual dogs?
-
-```{r echo=F, warning=F, message=F}
-brmstools::forest(m9.2, pars = 'hu_condition', grouping = 'ID') +
-  geom_vline(xintercept = 0, linetype = "dashed")
-
-brmstools::forest(m9.2, pars = 'condition', grouping = 'ID') +
-  geom_vline(xintercept = 0, linetype = "dashed")
-```
-
-Condition doesn't seem to have an effect on probability of yawning or yawning rate for any individual dog either.
-
 ```{r echo=F}
 # cleanup
-rm(fig4a_inset, figS5_inset, post)
+rm(fig4a_inset, figS6_inset, post)
 ```
 
 ## 1.3. Trial-only model
